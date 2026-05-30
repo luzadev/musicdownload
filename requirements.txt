@@ -1,0 +1,7 @@
+pywebview>=5.0
+requests>=2.31.0
+yt-dlp>=2024.0.0
+pyobjc-core>=10.0 ; sys_platform == "darwin"
+pyobjc-framework-Cocoa>=10.0 ; sys_platform == "darwin"
+pyobjc-framework-WebKit>=10.0 ; sys_platform == "darwin"
+pythonnet>=3.0 ; sys_platform == "win32"

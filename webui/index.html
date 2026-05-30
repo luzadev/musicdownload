@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MusicDownload</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="app">
+
+    <!-- ============== SIDEBAR ============== -->
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-logo">
+          <span>♫</span>
+        </div>
+        <div class="brand-name">MusicDownload</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <nav class="nav">
+        <button class="nav-item active" data-view="download">
+          <span class="nav-icon">⬇</span>
+          <span>Scarica</span>
+        </button>
+        <button class="nav-item" data-view="upgrade">
+          <span class="nav-icon">⚡</span>
+          <span>Upgrade</span>
+        </button>
+        <button class="nav-item" data-view="settings">
+          <span class="nav-icon">⚙</span>
+          <span>Impostazioni</span>
+        </button>
+      </nav>
+
+      <div class="footer">
+        <div class="footer-by">by LuZa</div>
+        <div class="footer-version" id="footerVersion">v1.0</div>
+      </div>
+    </aside>
+
+    <!-- ============== MAIN ============== -->
+    <main class="main">
+
+      <!-- ===== VIEW: DOWNLOAD ===== -->
+      <section class="view active" id="view-download">
+        <header class="hero hero-green">
+          <div class="hero-content">
+            <div class="hero-eyebrow">DOWNLOAD</div>
+            <h1 class="hero-title">Scarica la tua musica</h1>
+            <p class="hero-subtitle">Spotify · YouTube · SoundCloud · qualsiasi link supportato da yt-dlp</p>
+          </div>
+          <div class="hero-deco">♫</div>
+        </header>
+
+        <h2 class="section-label">Sorgente</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">
+              URL
+              <span class="badge" id="urlListBadge" hidden></span>
+            </label>
+            <div class="row">
+              <input type="text" id="urlInput" class="input pill" placeholder="Incolla qui un link Spotify, YouTube o SoundCloud…" />
+              <button class="btn btn-ghost pill" id="loadListBtn">
+                <span>📂</span> Carica lista
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Cartella output</label>
+            <div class="row">
+              <div class="path-display" id="dlPathDisplay">Nessuna cartella selezionata</div>
+              <button class="btn btn-ghost pill btn-sm" id="dlBrowseBtn">Sfoglia</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="card actions">
+          <button class="btn btn-primary pill btn-lg" id="downloadBtn">
+            <span class="ico">▶</span> Avvia Download
+          </button>
+          <button class="btn btn-danger pill btn-lg" id="stopDownloadBtn" disabled>
+            <span class="ico">◼</span> Stop
+          </button>
+          <div class="counter" id="dlCounter"></div>
+        </div>
+
+        <div class="card">
+          <div class="progress-head">
+            <span class="micro-label">Progresso</span>
+            <span class="percent green" id="dlPercent">0%</span>
+          </div>
+          <div class="progress">
+            <div class="progress-fill green" id="dlProgressFill"></div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="dlLog"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: UPGRADE ===== -->
+      <section class="view" id="view-upgrade">
+        <header class="hero hero-blue">
+          <div class="hero-content">
+            <div class="hero-eyebrow blue">UPGRADE QUALITÀ</div>
+            <h1 class="hero-title">Migliora i tuoi audio</h1>
+            <p class="hero-subtitle">Riscarica i file a bitrate più alto. Imposta la soglia minima accettabile.</p>
+          </div>
+          <div class="hero-deco">⚡</div>
+        </header>
+
+        <h2 class="section-label">Cartella audio</h2>
+        <div class="card">
+          <div class="field">
+            <div class="row">
+              <div class="path-display" id="upPathDisplay">Nessuna cartella selezionata</div>
+              <button class="btn btn-ghost pill btn-sm" id="upBrowseBtn">📂 Sfoglia</button>
+            </div>
+          </div>
+
+          <label class="checkbox">
+            <input type="checkbox" id="upRecursive" />
+            <span class="check-box"></span>
+            <span>Includi sottocartelle</span>
+          </label>
+
+          <div class="info-row" id="upInfo"></div>
+
+          <div class="field inline">
+            <label class="field-label">Soglia HQ (kbps)</label>
+            <input type="number" id="upThreshold" class="input pill input-sm" value="310" />
+          </div>
+        </div>
+
+        <div class="card actions">
+          <button class="btn btn-blue pill btn-lg" id="upgradeBtn">
+            <span class="ico">▶</span> Avvia Upgrade
+          </button>
+          <button class="btn btn-danger pill btn-lg" id="stopUpgradeBtn" disabled>
+            <span class="ico">◼</span> Stop
+          </button>
+          <div class="counter" id="upCounter"></div>
+        </div>
+
+        <div class="card">
+          <div class="progress-head">
+            <span class="micro-label">Progresso</span>
+            <span class="percent blue" id="upPercent">0%</span>
+          </div>
+          <div class="progress">
+            <div class="progress-fill blue" id="upProgressFill"></div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="upLog"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: SETTINGS ===== -->
+      <section class="view" id="view-settings">
+        <header class="hero hero-purple">
+          <div class="hero-content">
+            <div class="hero-eyebrow purple">IMPOSTAZIONI</div>
+            <h1 class="hero-title">Configurazione</h1>
+            <p class="hero-subtitle">Credenziali Spotify, qualità audio, percorsi e aggiornamenti.</p>
+          </div>
+          <div class="hero-deco">⚙</div>
+        </header>
+
+        <h2 class="section-label">Spotify API</h2>
+        <div class="card card-accent-purple">
+          <div class="row gap">
+            <button class="btn btn-purple pill" id="showGuideBtn">Come ottenere le credenziali?</button>
+            <button class="btn btn-ghost pill" id="openDashboardBtn">Apri Spotify Dashboard</button>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Client ID</label>
+            <input type="text" id="clientIdInput" class="input pill" placeholder="Inserisci Client ID" />
+          </div>
+
+          <div class="field">
+            <label class="field-label">Client Secret</label>
+            <div class="row">
+              <input type="password" id="clientSecretInput" class="input pill" placeholder="Inserisci Client Secret" />
+              <button class="btn btn-ghost pill btn-sm" id="toggleSecretBtn">Mostra</button>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Download</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">Bitrate</label>
+            <select id="bitrateSelect" class="input pill input-sm">
+              <option value="128K">128 kbps</option>
+              <option value="192K">192 kbps</option>
+              <option value="256K">256 kbps</option>
+              <option value="320K" selected>320 kbps</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Soglia HQ (kbps)</label>
+            <input type="number" id="hqThresholdInput" class="input pill input-sm" placeholder="310" />
+          </div>
+        </div>
+
+        <h2 class="section-label">Percorsi</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">Percorso cookies.txt</label>
+            <div class="row">
+              <input type="text" id="cookiesInput" class="input pill" placeholder="cookies.txt" />
+              <button class="btn btn-ghost pill btn-sm" id="browseCookiesBtn">Sfoglia</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Cartella output predefinita</label>
+            <div class="row">
+              <input type="text" id="outputInput" class="input pill" placeholder="MUSICA/" />
+              <button class="btn btn-ghost pill btn-sm" id="browseOutputBtn">Sfoglia</button>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Aspetto</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">Tema</label>
+            <select id="themeSelect" class="input pill input-sm">
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+              <option value="system">System</option>
+            </select>
+          </div>
+        </div>
+
+        <h2 class="section-label">Aggiornamenti</h2>
+        <div class="card">
+          <div class="row spread">
+            <div class="version-line">
+              Versione corrente: <span class="strong" id="currentVersionLabel">v1.0</span>
+            </div>
+            <button class="btn btn-purple pill" id="checkUpdateBtn">Controlla aggiornamenti</button>
+          </div>
+          <div class="update-status" id="updateStatus"></div>
+          <button class="btn btn-success pill" id="downloadUpdateBtn" hidden>Scarica aggiornamento</button>
+          <div class="update-notes" id="updateNotes"></div>
+        </div>
+
+        <div class="save-row">
+          <button class="btn btn-primary pill btn-lg" id="saveBtn">Salva Impostazioni</button>
+          <div class="save-status" id="saveStatus"></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+
+  <!-- ============== MODAL: Spotify Guide ============== -->
+  <div class="modal-backdrop" id="guideModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Come ottenere le credenziali Spotify</h2>
+        <button class="modal-close" id="guideCloseBtn">×</button>
+      </div>
+      <pre class="modal-body" id="guideBody"></pre>
+      <div class="modal-foot">
+        <button class="btn btn-purple pill" id="guideOpenDashBtn">Apri Spotify Dashboard</button>
+        <button class="btn btn-ghost pill" id="guideCloseBtn2">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== TOAST ============== -->
+  <div class="toast" id="toast"></div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>

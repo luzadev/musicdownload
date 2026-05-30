@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# PyInstaller
+build/
+dist/
+*.spec
+bundle_bin/
+
+# App data — sensibili o specifici dell'utente
+config.json
+cookies.txt
+MUSICA/
+
+# Logs
+*.log
+.downloaded_tracks
+.upgraded_tracks
+
+# Claude
+.claude/
+Apri con claude-social.command
