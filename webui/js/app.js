@@ -10,9 +10,11 @@ const state = {
   urlList: [],
   dlOutputDir: "",
   upDir: "",
+  videoOutputDir: "",
   showSecret: false,
   downloading: false,
   upgrading: false,
+  videoDownloading: false,
 };
 
 // Wait for pywebview ready
@@ -80,12 +82,37 @@ const bridgeHandlers = {
     $("#upgradeBtn").disabled = false;
     $("#stopUpgradeBtn").disabled = true;
   },
+
+  "video:progress": (p) => {
+    if (typeof p.overall === "number") {
+      const pct = Math.round(p.overall * 100);
+      $("#videoProgressFill").style.width = pct + "%";
+      $("#videoPercent").textContent = pct + "%";
+    }
+    if (p.status === "downloading" && typeof p.idx === "number") {
+      const prefix = p.url_total > 1 ? `[${(p.url_idx ?? 0) + 1}/${p.url_total}] ` : "";
+      $("#videoCounter").textContent = `${prefix}Video ${p.idx + 1} di ${p.total}`;
+    }
+    if (p.status === "completed" && p.url_total > 1) {
+      $("#videoCounter").textContent = `Completato: ${p.url_total} URL`;
+    }
+  },
+
+  "video:done": () => {
+    state.videoDownloading = false;
+    $("#videoDownloadBtn").disabled = false;
+    $("#stopVideoBtn").disabled = true;
+  },
 };
 
 // ============================================================
 // Logging
 // ============================================================
-const logEls = { download: () => $("#dlLog"), upgrade: () => $("#upLog") };
+const logEls = {
+  download: () => $("#dlLog"),
+  upgrade: () => $("#upLog"),
+  video: () => $("#videoLog"),
+};
 
 function classifyLog(msg) {
   if (msg.startsWith("[ERRORE]")) return "l-err";
@@ -157,6 +184,13 @@ async function init() {
   if (state.dlOutputDir) {
     $("#dlPathDisplay").textContent = state.dlOutputDir;
     $("#dlPathDisplay").classList.remove("empty");
+  }
+
+  // Video tab — usa output_dir come default
+  state.videoOutputDir = state.config.output_dir || "";
+  if (state.videoOutputDir) {
+    $("#videoPathDisplay").textContent = state.videoOutputDir;
+    $("#videoPathDisplay").classList.remove("empty");
   }
 
   // Upgrade tab — default threshold
@@ -233,6 +267,51 @@ $("#downloadBtn").addEventListener("click", async () => {
 $("#stopDownloadBtn").addEventListener("click", async () => {
   await window.pywebview.api.stop_download();
   $("#stopDownloadBtn").disabled = true;
+});
+
+// ============================================================
+// VIDEO tab
+// ============================================================
+$("#videoBrowseBtn").addEventListener("click", async () => {
+  const path = await window.pywebview.api.browse_directory();
+  if (path) {
+    state.videoOutputDir = path;
+    $("#videoPathDisplay").textContent = path;
+    $("#videoPathDisplay").classList.remove("empty");
+  }
+});
+
+$("#videoDownloadBtn").addEventListener("click", async () => {
+  const url = $("#videoUrlInput").value.trim();
+  if (!url) {
+    toast("Inserisci un URL", "error");
+    return;
+  }
+  if (!state.videoOutputDir) {
+    toast("Seleziona una cartella di destinazione", "error");
+    return;
+  }
+
+  state.videoDownloading = true;
+  $("#videoDownloadBtn").disabled = true;
+  $("#stopVideoBtn").disabled = false;
+  $("#videoProgressFill").style.width = "0%";
+  $("#videoPercent").textContent = "0%";
+
+  const res = await window.pywebview.api.start_video_download({
+    urls: [url],
+    output_dir: state.videoOutputDir,
+    quality: $("#videoQuality").value,
+  });
+  if (!res.ok) {
+    toast(res.error || "Errore", "error");
+    bridgeHandlers["video:done"]();
+  }
+});
+
+$("#stopVideoBtn").addEventListener("click", async () => {
+  await window.pywebview.api.stop_video_download();
+  $("#stopVideoBtn").disabled = true;
 });
 
 // ============================================================

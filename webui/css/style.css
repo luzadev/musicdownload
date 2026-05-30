@@ -26,6 +26,10 @@
   --purple-hover: #C084FC;
   --purple-dim: #2D1B4D;
 
+  --pink: #EC4899;
+  --pink-hover: #F472B6;
+  --pink-dim: #831843;
+
   --red: #E22134;
   --red-hover: #FF4055;
 
@@ -225,6 +229,10 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   background: linear-gradient(135deg, #5D2C9C 0%, #2D1B4D 60%, #1A0F2E 100%);
 }
 
+.hero-pink {
+  background: linear-gradient(135deg, #EC4899 0%, #831843 60%, #3F0A23 100%);
+}
+
 .hero-content { position: relative; z-index: 2; max-width: 70%; }
 
 .hero-eyebrow {
@@ -237,6 +245,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .hero-eyebrow.blue { color: var(--blue); }
 .hero-eyebrow.purple { color: var(--purple); }
+.hero-eyebrow.pink { color: var(--pink-hover); }
 
 .hero-title {
   font-size: 36px;
@@ -449,6 +458,11 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #fff;
 }
 
+.btn-pink {
+  background: var(--pink);
+  color: #fff;
+}
+
 .btn-success {
   background: #00CEC9;
   color: #000;
@@ -512,6 +526,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .percent.green { color: var(--green); }
 .percent.blue { color: var(--blue); }
+.percent.pink { color: var(--pink-hover); }
 
 .progress {
   width: 100%;
@@ -536,6 +551,10 @@ input[type="number"]::-webkit-inner-spin-button {
   background: linear-gradient(90deg, var(--blue), var(--blue-hover));
 }
 
+.progress-fill.pink {
+  background: linear-gradient(90deg, var(--pink), var(--pink-hover));
+}
+
 /* ===============================
    LOG BOX
    =============================== */
@@ -558,6 +577,30 @@ input[type="number"]::-webkit-inner-spin-button {
 .log .l-info { color: var(--blue); }
 .log .l-warn { color: #FDCB6E; }
 .log .l-muted { color: var(--text-3); }
+
+/* ===============================
+   HINT BOX
+   =============================== */
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+  padding: 10px 14px;
+  background: rgba(236, 72, 153, 0.08);
+  border: 1px solid rgba(236, 72, 153, 0.2);
+  border-radius: var(--r-sm);
+  color: var(--text-2);
+  font-size: 12.5px;
+}
+
+.hint-ico {
+  color: var(--pink-hover);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.hint strong { color: var(--text); font-weight: 700; }
 
 /* ===============================
    CHECKBOX

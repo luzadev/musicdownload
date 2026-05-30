@@ -25,6 +25,10 @@
           <span class="nav-icon">⬇</span>
           <span>Scarica</span>
         </button>
+        <button class="nav-item" data-view="video">
+          <span class="nav-icon">🎬</span>
+          <span>Video</span>
+        </button>
         <button class="nav-item" data-view="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -102,6 +106,74 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="dlLog"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: VIDEO ===== -->
+      <section class="view" id="view-video">
+        <header class="hero hero-pink">
+          <div class="hero-content">
+            <div class="hero-eyebrow pink">VIDEO</div>
+            <h1 class="hero-title">Scarica video</h1>
+            <p class="hero-subtitle">YouTube · TikTok · Instagram · Facebook · qualsiasi link supportato</p>
+          </div>
+          <div class="hero-deco">🎬</div>
+        </header>
+
+        <h2 class="section-label">Sorgente</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">URL</label>
+            <input type="text" id="videoUrlInput" class="input pill" placeholder="https://youtube.com/watch?v=…  ·  https://tiktok.com/…  ·  https://instagram.com/reel/…" />
+          </div>
+
+          <div class="field">
+            <label class="field-label">Cartella output</label>
+            <div class="row">
+              <div class="path-display" id="videoPathDisplay">Nessuna cartella selezionata</div>
+              <button class="btn btn-ghost pill btn-sm" id="videoBrowseBtn">Sfoglia</button>
+            </div>
+          </div>
+
+          <div class="field inline">
+            <label class="field-label">Qualità</label>
+            <select id="videoQuality" class="input pill input-sm">
+              <option value="best">Migliore disponibile</option>
+              <option value="1080p" selected>1080p</option>
+              <option value="720p">720p</option>
+              <option value="480p">480p</option>
+            </select>
+          </div>
+
+          <div class="hint">
+            <span class="hint-ico">ⓘ</span>
+            Per Instagram/Facebook privati serve un file <strong>cookies.txt</strong> valido (Impostazioni → Percorsi).
+          </div>
+        </div>
+
+        <div class="card actions">
+          <button class="btn btn-pink pill btn-lg" id="videoDownloadBtn">
+            <span class="ico">▶</span> Avvia Download
+          </button>
+          <button class="btn btn-danger pill btn-lg" id="stopVideoBtn" disabled>
+            <span class="ico">◼</span> Stop
+          </button>
+          <div class="counter" id="videoCounter"></div>
+        </div>
+
+        <div class="card">
+          <div class="progress-head">
+            <span class="micro-label">Progresso</span>
+            <span class="percent pink" id="videoPercent">0%</span>
+          </div>
+          <div class="progress">
+            <div class="progress-fill pink" id="videoProgressFill"></div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="videoLog"></div>
         </div>
       </section>
 

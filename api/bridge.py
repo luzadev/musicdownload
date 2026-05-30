@@ -13,6 +13,7 @@ from core.config import load_config, save_config, VERSION
 from core.downloader import (
     download_playlist,
     download_direct_url,
+    download_video,
     request_stop as request_download_stop,
     reset_stop as reset_download_stop,
     is_stopped as download_is_stopped,
@@ -55,6 +56,7 @@ class Api:
         self.window = None  # impostato dopo create_window
         self._download_thread: Optional[threading.Thread] = None
         self._upgrade_thread: Optional[threading.Thread] = None
+        self._video_thread: Optional[threading.Thread] = None
 
     # ------------------------------------------------------------------
     # Helpers
@@ -188,9 +190,15 @@ class Api:
     # ------------------------------------------------------------------
     # DOWNLOAD
     # ------------------------------------------------------------------
+    def _any_job_running(self) -> bool:
+        return (
+            (self._download_thread and self._download_thread.is_alive()) or
+            (self._video_thread and self._video_thread.is_alive())
+        )
+
     def start_download(self, payload: dict) -> dict:
-        if self._download_thread and self._download_thread.is_alive():
-            return {"ok": False, "error": "Download gia in corso"}
+        if self._any_job_running():
+            return {"ok": False, "error": "Un download gia in corso"}
 
         urls = payload.get("urls") or []
         output_dir = (payload.get("output_dir") or "").strip()
@@ -388,3 +396,107 @@ class Api:
 
         upgrade_folder(directory, threshold, cookies_path, recursive, progress_cb)
         self._emit("upgrade:done", {"ok": True})
+
+    # ------------------------------------------------------------------
+    # VIDEO (YouTube, TikTok, Instagram, Facebook)
+    # ------------------------------------------------------------------
+    def start_video_download(self, payload: dict) -> dict:
+        if self._any_job_running():
+            return {"ok": False, "error": "Un download gia in corso"}
+
+        urls = payload.get("urls") or []
+        output_dir = (payload.get("output_dir") or "").strip()
+        quality = payload.get("quality") or "1080p"
+
+        if not urls:
+            return {"ok": False, "error": "Nessun URL fornito"}
+        if not output_dir:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        self._video_thread = threading.Thread(
+            target=self._video_worker,
+            args=(list(urls), output_dir, quality),
+            daemon=True,
+        )
+        self._video_thread.start()
+        return {"ok": True}
+
+    def stop_video_download(self) -> dict:
+        request_download_stop()
+        self._log("video", "[INFO] Interruzione richiesta...")
+        return {"ok": True}
+
+    def _video_worker(self, urls: list, output_dir: str, quality: str) -> None:
+        reset_download_stop()
+        cfg = load_config()
+        cookies_path = cfg.get("cookies_path", "")
+        total_urls = len(urls)
+        multi = total_urls > 1
+        view = "video"
+
+        for url_idx, url in enumerate(urls):
+            if download_is_stopped():
+                self._log(view, "[INFO] Download interrotto.")
+                break
+
+            if multi:
+                self._log(view, f"\n{'='*50}")
+                self._log(view, f"[LISTA] URL {url_idx + 1} di {total_urls}")
+                self._log(view, f"{'='*50}")
+
+            _last = [0.0]
+            _THROTTLE = 0.10
+            url_base = url_idx / total_urls if multi else 0
+            url_weight = 1 / total_urls if multi else 1
+
+            def progress_cb(idx, total, track_name, status, pct,
+                            _base=url_base, _weight=url_weight, _uidx=url_idx):
+                if status == "downloading":
+                    now = time.monotonic()
+                    if now - _last[0] < _THROTTLE:
+                        return
+                    _last[0] = now
+
+                payload_evt = {
+                    "idx": idx, "total": total, "track": track_name,
+                    "status": status, "pct": pct,
+                    "url_idx": _uidx, "url_total": total_urls,
+                }
+
+                if status == "skipped":
+                    self._log(view, f"[SKIP] {track_name} (gia scaricato)")
+                    track_progress = (idx + 1) / total if total > 0 else 1
+                    payload_evt["overall"] = min(_base + track_progress * _weight, 1.0)
+                elif status == "downloading":
+                    track_progress = (idx / total) + (pct / 100 / total) if total > 0 else 0
+                    payload_evt["overall"] = min(_base + track_progress * _weight, 1.0)
+                elif status == "done":
+                    self._log(view, f"[OK] {track_name}")
+                    track_progress = (idx + 1) / total if total > 0 else 1
+                    payload_evt["overall"] = min(_base + track_progress * _weight, 1.0)
+                elif status == "stopped":
+                    self._log(view, "[INFO] Download interrotto.")
+                elif status == "completed":
+                    if not multi:
+                        payload_evt["overall"] = 1.0
+                    self._log(view, "[INFO] Download completato!")
+                elif status.startswith("error"):
+                    self._log(view, f"[ERRORE] {track_name}: {status}")
+
+                self._emit("video:progress", payload_evt)
+
+            self._log(view, f"[INFO] Video: {url}")
+            try:
+                download_video(url, output_dir, quality, cookies_path, progress_cb)
+            except Exception as e:
+                self._log(view, f"[ERRORE] {e}")
+                continue
+
+        if multi and not download_is_stopped():
+            self._log(view, f"\n[INFO] Completate tutte le {total_urls} URL!")
+            self._emit("video:progress", {
+                "status": "completed", "overall": 1.0,
+                "url_total": total_urls,
+            })
+
+        self._emit("video:done", {"ok": True})
