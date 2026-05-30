@@ -1,98 +1,112 @@
 # MusicDownload
 
-Applicazione desktop per scaricare musica da Spotify, YouTube, SoundCloud e qualsiasi sorgente supportata da yt-dlp, con possibilita di migliorare la qualita audio dei file esistenti.
+Applicazione desktop per scaricare **musica** da Spotify, YouTube e SoundCloud, e **video** da YouTube, TikTok, Instagram e Facebook. Include anche un upgrader di qualità per migliorare i file audio già scaricati.
+
+UI moderna basata su **pywebview** (WebKit su macOS, EdgeChromium su Windows) — frontend HTML/CSS/JS, backend Python.
 
 Sviluppata da **LuZa**.
 
-## Funzionalita
+Repo: <https://github.com/luzadev/musicdownload>
 
-- **Download da Spotify** — Incolla un link a playlist, album o brano singolo: l'app risolve i brani via API Spotify e li scarica da YouTube in MP3
-- **Download diretto** — Incolla un URL YouTube, SoundCloud o qualsiasi sorgente yt-dlp e scarica direttamente in MP3 (singoli video e playlist)
-- **Upgrade qualita** — Scansiona una cartella di file audio e riscarica quelli a bassa qualita da YouTube
-- **Aggiornamento app** — Controlla la disponibilita di nuove versioni direttamente dalle Impostazioni
-- **Gestione impostazioni** — Credenziali Spotify, bitrate, soglia HQ, percorsi, tema
+## Funzionalità
+
+- **Scarica musica** — Incolla un link Spotify (playlist/album/brano), YouTube, SoundCloud o qualsiasi sorgente yt-dlp e scarica in MP3 a 320 kbps. Supporta liste di URL da file `.txt`.
+- **Scarica video** — Incolla un link **YouTube · TikTok · Instagram · Facebook** (o qualsiasi sorgente yt-dlp) e scarica in MP4 alla qualità scelta (best / 1080p / 720p / 480p).
+- **Upgrade qualità** — Scansiona una cartella di file audio e riscarica quelli sotto la soglia kbps impostata.
+- **Auto-skip dei duplicati** — Tracking persistente (`.downloaded_tracks` / `.downloaded_videos`) + scan filename token-based: re-eseguire la stessa playlist salta i brani già presenti, anche se il filename ha "Official Video" / "Lyrics" / ecc.
+- **Aggiornamento automatico** — Verifica disponibilità nuove versioni dalla pagina Impostazioni.
+- **Lista multi-URL** — Carica un file `.txt` con un URL per riga per scaricare più playlist in sequenza.
 
 ## Requisiti
 
 - Python 3.8+
-- [yt-dlp](https://github.com/yt-dlp/yt-dlp) installato nel sistema (`brew install yt-dlp` su macOS)
-- [ffmpeg](https://ffmpeg.org/) installato nel sistema (`brew install ffmpeg` su macOS)
-- Credenziali Spotify API (gratuite, vedi sotto) — necessarie solo per URL Spotify
+- `ffmpeg` + `ffprobe` (solo per build/sviluppo locale: `brew install ffmpeg` su macOS)
+- Credenziali Spotify API gratuite — solo se si usano URL Spotify
 
-## Installazione
+Nelle build distribuite (`.app` / `.exe`) **tutto è incluso** — non serve installare nulla.
+
+## Installazione (sviluppo)
 
 ```bash
+git clone https://github.com/luzadev/musicdownload.git
+cd musicdownload
 pip install -r requirements.txt
-```
-
-Dipendenze Python:
-
-| Pacchetto | Utilizzo |
-|---|---|
-| `customtkinter` | GUI moderna basata su Tkinter |
-| `requests` | Chiamate API Spotify |
-| `yt-dlp` | Download audio da YouTube |
-| `Pillow` | Gestione immagini (copertine) |
-
-## Avvio
-
-```bash
 python3 main.py
 ```
 
+Dipendenze principali:
+
+| Pacchetto | Utilizzo |
+|---|---|
+| `pywebview` | Finestra nativa con WebView (WebKit / EdgeChromium) |
+| `requests` | Chiamate API Spotify |
+| `yt-dlp` | Download audio/video da YouTube e oltre 1000 siti |
+| `pyobjc-framework-WebKit` (macOS) | Backend WebKit di pywebview |
+| `pythonnet` (Windows) | Backend EdgeChromium di pywebview |
+
 ## Credenziali Spotify API
 
-1. Vai su https://developer.spotify.com/dashboard e accedi (anche account gratuito)
+Necessarie solo per scaricare da URL `open.spotify.com/...`.
+
+1. Vai su <https://developer.spotify.com/dashboard> e accedi (anche account gratuito)
 2. Clicca **Create app**
 3. Compila: nome a piacere, Redirect URI `http://localhost:8888/callback`, seleziona **Web API**
-4. Nella pagina dell'app, clicca **Settings**
+4. Apri la app e clicca **Settings**
 5. Copia **Client ID** e **Client Secret** nelle Impostazioni dell'app
 
-Le credenziali sono gratuite e non richiedono Spotify Premium.
+Le credenziali sono gratuite, non servono Spotify Premium.
+
+## Cookies per contenuti privati
+
+Per scaricare **Instagram / Facebook privati** o aggirare il rate-limit di YouTube serve un file `cookies.txt` (formato Netscape). Esportalo dal browser con un'estensione tipo "Get cookies.txt LOCALLY" e imposta il percorso in **Impostazioni → Percorsi**.
 
 ## Struttura progetto
 
 ```
 MusicDownload/
-├── main.py                  # Entry point
-├── requirements.txt         # Dipendenze Python
+├── main.py                  # Entry point — bootstrap pywebview
+├── requirements.txt
 ├── build_macos.py           # Script build macOS (.app)
 ├── build_windows.py         # Script build Windows (.exe)
+├── .github/workflows/
+│   └── build.yml            # CI: build macOS + Windows + Release automatica su tag
 │
-├── core/                    # Logica backend
+├── core/                    # Logica backend (riusabile, no UI)
 │   ├── config.py            # Configurazione persistente (JSON)
 │   ├── paths.py             # Ricerca binari (yt-dlp, ffmpeg)
-│   ├── spotify_client.py    # Autenticazione e API Spotify
-│   ├── downloader.py        # Download brani (Spotify via YouTube + URL diretti yt-dlp)
-│   └── upgrader.py          # Upgrade qualita file esistenti
+│   ├── spotify_client.py    # API Spotify (Client Credentials)
+│   ├── downloader.py        # Download audio (playlist Spotify, URL diretti, video)
+│   └── upgrader.py          # Upgrade qualità file esistenti
 │
-└── gui/                     # Interfaccia grafica
-    ├── app.py               # Finestra principale con sidebar
-    ├── download_tab.py      # Pagina download
-    ├── upgrade_tab.py       # Pagina upgrade
-    └── settings_tab.py      # Pagina impostazioni
+├── api/
+│   └── bridge.py            # Ponte JS <-> Python (pywebview.js_api)
+│
+└── webui/                   # Frontend
+    ├── index.html           # Single-page, 4 view (Scarica / Video / Upgrade / Impostazioni)
+    ├── css/style.css        # Tema scuro Spotify-like, gradient hero, animazioni
+    └── js/app.js            # Routing, eventi, chiamate API
 ```
 
 ## Configurazione
 
-Il file `config.json` viene creato automaticamente:
+Il file `config.json` viene creato automaticamente al primo avvio:
 
 | Chiave | Default | Descrizione |
 |---|---|---|
 | `client_id` | `""` | Spotify Client ID |
 | `client_secret` | `""` | Spotify Client Secret |
-| `bitrate` | `"320K"` | Bitrate download (128K/192K/256K/320K) |
+| `bitrate` | `"320K"` | Bitrate download audio (128K/192K/256K/320K) |
 | `hq_threshold` | `310` | Soglia kbps per considerare un file HQ |
-| `cookies_path` | `"cookies.txt"` | Path al file cookies YouTube (opzionale) |
-| `output_dir` | `"MUSICA/"` | Cartella output predefinita |
-| `theme` | `"dark"` | Tema interfaccia (dark/light/system) |
+| `cookies_path` | `""` | Path al file `cookies.txt` (opzionale) |
+| `output_dir` | `""` | Cartella output predefinita |
+| `theme` | `"dark"` | Tema interfaccia |
 
-Posizione del file:
+Posizione:
 - **Sviluppo**: directory del progetto
 - **macOS bundle**: `~/Library/Application Support/MusicDownload/`
 - **Windows bundle**: `%APPDATA%/MusicDownload/`
 
-## Build
+## Build locale
 
 ### macOS
 
@@ -102,7 +116,7 @@ pip install pyinstaller
 python3 build_macos.py
 ```
 
-Produce `dist/MusicDownload.app` con yt-dlp, ffmpeg e ffprobe inclusi.
+Produce `dist/MusicDownload.app` con yt-dlp, ffmpeg, ffprobe e tutte le dylib bundled (rpath patchati con `install_name_tool`).
 
 ### Windows
 
@@ -111,21 +125,44 @@ pip install pyinstaller
 python build_windows.py
 ```
 
-Produce `dist/MusicDownload/MusicDownload.exe` con tutti i binari inclusi.
+Produce `dist/MusicDownload/MusicDownload.exe`. Lo script scarica automaticamente `yt-dlp.exe` e `ffmpeg.exe`/`ffprobe.exe` static build.
+
+## Build & Release automatiche (GitHub Actions)
+
+Ogni push di un tag `v*` triggera la pipeline `.github/workflows/build.yml`:
+
+1. **`build-macos`** (runner `macos-latest`) → `MusicDownload-macOS.zip` (la `.app` zippata con `ditto`)
+2. **`build-windows`** (runner `windows-latest`) → `MusicDownload-Windows.zip`
+3. **`release`** → crea automaticamente una GitHub Release con entrambi gli asset allegati
+
+Per pubblicare una nuova versione:
+
+```bash
+git tag v1.2.0
+git push origin v1.2.0
+```
+
+Per fare solo una build di test (senza release):
+
+```bash
+gh workflow run "Build MusicDownload" --ref main
+```
+
+oppure dalla UI: **Actions → Build MusicDownload → Run workflow**.
+
+Le release ufficiali sono disponibili su <https://github.com/luzadev/musicdownload/releases>.
 
 ## Aggiornamento app
 
-L'app verifica la disponibilita di nuove versioni tramite un file `version.json` remoto. Il formato atteso:
+L'app verifica nuove versioni interrogando un `version.json` remoto. URL configurato in `api/bridge.py` (`UPDATE_URL` nel metodo `check_update`):
 
 ```json
 {
-  "version": "v1.1",
-  "download_url": "https://www.djluza.com/musicdownload/MusicDownload.dmg",
-  "notes": "Descrizione delle novita"
+  "version": "v1.2.0",
+  "download_url": "https://github.com/luzadev/musicdownload/releases/latest",
+  "notes": "Descrizione delle novità"
 }
 ```
-
-L'URL di controllo e configurabile nella costante `UPDATE_URL` in `gui/settings_tab.py`.
 
 ## Licenza
 
