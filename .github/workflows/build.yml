@@ -1,12 +1,18 @@
 name: Build MusicDownload
 
 on:
-  workflow_dispatch:  # Lancia manualmente da GitHub
+  workflow_dispatch:
   push:
     tags:
-      - 'v*'  # Builda automaticamente sui tag (es. v1.0.0)
+      - 'v*'
+
+permissions:
+  contents: write  # serve per creare le Release
 
 jobs:
+  # =========================================================
+  # macOS
+  # =========================================================
   build-macos:
     runs-on: macos-latest
     steps:
@@ -27,13 +33,22 @@ jobs:
       - name: Build app
         run: python build_macos.py
 
+      - name: Package .app -> zip
+        run: |
+          cd dist
+          ditto -c -k --sequesterRsrc --keepParent MusicDownload.app ../MusicDownload-macOS.zip
+          ls -lh ../MusicDownload-macOS.zip
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MusicDownload-macOS
-          path: dist/MusicDownload.app
-          compression-level: 9
+          path: MusicDownload-macOS.zip
+          retention-days: 14
 
+  # =========================================================
+  # Windows
+  # =========================================================
   build-windows:
     runs-on: windows-latest
     steps:
@@ -48,12 +63,49 @@ jobs:
           pip install -r requirements.txt
           pip install pyinstaller
 
-      - name: Build app
+      - name: Build exe
         run: python build_windows.py
+
+      - name: Package -> zip
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/MusicDownload/* -DestinationPath MusicDownload-Windows.zip -CompressionLevel Optimal
+          Get-Item MusicDownload-Windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MusicDownload-Windows
-          path: dist/MusicDownload
-          compression-level: 9
+          path: MusicDownload-Windows.zip
+          retention-days: 14
+
+  # =========================================================
+  # Release (solo su tag v*)
+  # =========================================================
+  release:
+    needs: [build-macos, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MusicDownload-macOS
+          path: artifacts/macos
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MusicDownload-Windows
+          path: artifacts/windows
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: MusicDownload ${{ github.ref_name }}
+          tag_name: ${{ github.ref_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: |
+            artifacts/macos/MusicDownload-macOS.zip
+            artifacts/windows/MusicDownload-Windows.zip
