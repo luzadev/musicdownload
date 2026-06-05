@@ -7,7 +7,7 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const state = {
   config: {},
-  urlList: [],
+  loaded: null,  // { kind: "urls"|"tracks", urls?, tracks?, count }
   dlOutputDir: "",
   upDir: "",
   videoOutputDir: "",
@@ -55,7 +55,7 @@ const bridgeHandlers = {
 
   "download:done": () => {
     state.downloading = false;
-    state.urlList = [];
+    state.loaded = null;
     $("#urlListBadge").hidden = true;
     $("#urlListBadge").textContent = "";
     $("#downloadBtn").disabled = false;
@@ -221,27 +221,23 @@ $("#loadListBtn").addEventListener("click", async () => {
     return;
   }
   if (!res.count) {
-    toast("Il file non contiene URL validi", "error");
+    toast("Il file non contiene voci valide", "error");
     return;
   }
-  state.urlList = res.urls;
+  state.loaded = res;
   $("#urlInput").value = path;
   const badge = $("#urlListBadge");
-  badge.textContent = `· ${res.count} URL caricati`;
+  if (res.kind === "tracks") {
+    badge.textContent = `· ${res.count} tracce`;
+    appendLog("download", `[INFO] Caricata tracklist: ${res.count} brani`);
+  } else {
+    badge.textContent = `· ${res.count} URL`;
+    appendLog("download", `[INFO] Caricati ${res.count} URL dal file`);
+  }
   badge.hidden = false;
-  appendLog("download", `[INFO] Caricati ${res.count} URL dal file`);
 });
 
 $("#downloadBtn").addEventListener("click", async () => {
-  let urls = state.urlList;
-  if (!urls.length) {
-    const single = $("#urlInput").value.trim();
-    if (!single) {
-      toast("Inserisci un URL o carica una lista", "error");
-      return;
-    }
-    urls = [single];
-  }
   if (!state.dlOutputDir) {
     toast("Seleziona una cartella di destinazione", "error");
     return;
@@ -254,10 +250,29 @@ $("#downloadBtn").addEventListener("click", async () => {
   $("#dlProgressFill").style.width = "0%";
   $("#dlPercent").textContent = "0%";
 
-  const res = await window.pywebview.api.start_download({
-    urls,
-    output_dir: state.dlOutputDir,
-  });
+  let res;
+  if (state.loaded && state.loaded.kind === "tracks") {
+    res = await window.pywebview.api.start_tracks_download({
+      tracks: state.loaded.tracks,
+      output_dir: state.dlOutputDir,
+    });
+  } else {
+    let urls = state.loaded && state.loaded.kind === "urls" ? state.loaded.urls : [];
+    if (!urls.length) {
+      const single = $("#urlInput").value.trim();
+      if (!single) {
+        toast("Inserisci un URL o carica una lista", "error");
+        bridgeHandlers["download:done"]();
+        return;
+      }
+      urls = [single];
+    }
+    res = await window.pywebview.api.start_download({
+      urls,
+      output_dir: state.dlOutputDir,
+    });
+  }
+
   if (!res.ok) {
     toast(res.error || "Errore", "error");
     bridgeHandlers["download:done"]();

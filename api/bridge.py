@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import threading
 import time
 import webbrowser
@@ -47,6 +48,30 @@ Note: credenziali gratuite, no Premium. Limite 100 richieste/minuto.
 def _js_safe(value: Any) -> str:
     """Serializza un valore per inserirlo in evaluate_js."""
     return json.dumps(value, ensure_ascii=False)
+
+
+_NUM_PREFIX = re.compile(r"^\s*\d+\s*[\.\)\:\-]\s*")
+_DURATION_TAIL = re.compile(r"\s*\(\s*\d{1,2}:\d{2}\s*\)\s*$")
+# Tutti i tipi di trattini: hyphen, en-dash, em-dash, horizontal bar, minus
+_DASH_SPLIT = re.compile(r"\s+[‐‑‒–—―−\-]\s+")
+
+
+def _parse_track_line(line: str) -> Optional[dict]:
+    """Parse 'N. Artista - Titolo (variant) (durata)' -> {name, artist}.
+    Ritorna None se la riga non e parseabile."""
+    s = line.strip()
+    if not s:
+        return None
+    s = _NUM_PREFIX.sub("", s)
+    s = _DURATION_TAIL.sub("", s).strip()
+    parts = _DASH_SPLIT.split(s, maxsplit=1)
+    if len(parts) < 2:
+        return None
+    artist = parts[0].strip()
+    name = parts[1].strip()
+    if not artist or not name:
+        return None
+    return {"name": name, "artist": artist}
 
 
 class Api:
@@ -167,10 +192,25 @@ class Api:
         return ""
 
     def load_url_list(self, path: str) -> dict:
+        """Carica un file .txt. Riconosce automaticamente se contiene URL
+        oppure una tracklist 'Artista - Titolo'."""
         try:
             with open(path, "r", encoding="utf-8") as f:
-                urls = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
-            return {"ok": True, "urls": urls, "count": len(urls)}
+                lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+            if not lines:
+                return {"ok": True, "kind": "urls", "urls": [], "count": 0}
+
+            # Detect: se la prima riga e un URL trattiamo tutto come URL list
+            if lines[0].lower().startswith(("http://", "https://")):
+                return {"ok": True, "kind": "urls", "urls": lines, "count": len(lines)}
+
+            # Altrimenti parse come tracklist
+            tracks = []
+            for line in lines:
+                t = _parse_track_line(line)
+                if t:
+                    tracks.append(t)
+            return {"ok": True, "kind": "tracks", "tracks": tracks, "count": len(tracks)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -215,10 +255,82 @@ class Api:
         self._download_thread.start()
         return {"ok": True}
 
+    def start_tracks_download(self, payload: dict) -> dict:
+        """Avvia il download di una tracklist gia parsata
+        (lista di {name, artist})."""
+        if self._any_job_running():
+            return {"ok": False, "error": "Un download gia in corso"}
+
+        tracks = payload.get("tracks") or []
+        output_dir = (payload.get("output_dir") or "").strip()
+        if not tracks:
+            return {"ok": False, "error": "Nessuna traccia fornita"}
+        if not output_dir:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        self._download_thread = threading.Thread(
+            target=self._tracks_worker,
+            args=(list(tracks), output_dir),
+            daemon=True,
+        )
+        self._download_thread.start()
+        return {"ok": True}
+
     def stop_download(self) -> dict:
         request_download_stop()
         self._log("download", "[INFO] Interruzione richiesta...")
         return {"ok": True}
+
+    def _tracks_worker(self, tracks: list, output_dir: str) -> None:
+        reset_download_stop()
+        cfg = load_config()
+        bitrate = cfg.get("bitrate", "320K")
+        cookies_path = cfg.get("cookies_path", "")
+        view = "download"
+
+        self._log(view, f"[INFO] Tracklist: {len(tracks)} brani da cercare su YouTube")
+
+        _last = [0.0]
+        _THROTTLE = 0.10
+
+        def progress_cb(idx, total, track_name, status, pct):
+            if status == "downloading":
+                now = time.monotonic()
+                if now - _last[0] < _THROTTLE:
+                    return
+                _last[0] = now
+
+            payload_evt = {
+                "idx": idx, "total": total, "track": track_name,
+                "status": status, "pct": pct,
+                "url_idx": 0, "url_total": 1,
+            }
+
+            if status == "searching":
+                self._log(view, f"[CERCA] {track_name}")
+            elif status == "skipped":
+                self._log(view, f"[SKIP] {track_name} (gia scaricato)")
+                track_progress = (idx + 1) / total if total > 0 else 1
+                payload_evt["overall"] = min(track_progress, 1.0)
+            elif status == "downloading":
+                track_progress = (idx / total) + (pct / 100 / total) if total > 0 else 0
+                payload_evt["overall"] = min(track_progress, 1.0)
+            elif status == "done":
+                self._log(view, f"[OK] {track_name}")
+                track_progress = (idx + 1) / total if total > 0 else 1
+                payload_evt["overall"] = min(track_progress, 1.0)
+            elif status == "stopped":
+                self._log(view, "[INFO] Download interrotto.")
+            elif status == "completed":
+                payload_evt["overall"] = 1.0
+                self._log(view, "[INFO] Download completato!")
+            elif status.startswith("error"):
+                self._log(view, f"[ERRORE] {track_name}: {status}")
+
+            self._emit("download:progress", payload_evt)
+
+        download_playlist(tracks, output_dir, bitrate, cookies_path, progress_cb)
+        self._emit("download:done", {"ok": True})
 
     def _download_worker(self, urls: list, output_dir: str) -> None:
         reset_download_stop()
