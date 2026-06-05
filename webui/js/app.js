@@ -255,6 +255,7 @@ $("#downloadBtn").addEventListener("click", async () => {
     res = await window.pywebview.api.start_tracks_download({
       tracks: state.loaded.tracks,
       output_dir: state.dlOutputDir,
+      subfolder: state.loaded.name || "",
     });
   } else {
     let urls = state.loaded && state.loaded.kind === "urls" ? state.loaded.urls : [];

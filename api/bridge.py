@@ -210,7 +210,11 @@ class Api:
                 t = _parse_track_line(line)
                 if t:
                     tracks.append(t)
-            return {"ok": True, "kind": "tracks", "tracks": tracks, "count": len(tracks)}
+            name = os.path.splitext(os.path.basename(path))[0]
+            return {
+                "ok": True, "kind": "tracks", "tracks": tracks,
+                "count": len(tracks), "name": name,
+            }
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -257,16 +261,24 @@ class Api:
 
     def start_tracks_download(self, payload: dict) -> dict:
         """Avvia il download di una tracklist gia parsata
-        (lista di {name, artist})."""
+        (lista di {name, artist}). Se 'subfolder' e presente,
+        scarica in output_dir/subfolder."""
         if self._any_job_running():
             return {"ok": False, "error": "Un download gia in corso"}
 
         tracks = payload.get("tracks") or []
         output_dir = (payload.get("output_dir") or "").strip()
+        subfolder = (payload.get("subfolder") or "").strip()
         if not tracks:
             return {"ok": False, "error": "Nessuna traccia fornita"}
         if not output_dir:
             return {"ok": False, "error": "Cartella output non impostata"}
+
+        if subfolder:
+            # Sanitizza: rimuovi separatori di path
+            safe = subfolder.replace("/", "_").replace("\\", "_").strip()
+            if safe:
+                output_dir = os.path.join(output_dir, safe)
 
         self._download_thread = threading.Thread(
             target=self._tracks_worker,
@@ -289,6 +301,7 @@ class Api:
         view = "download"
 
         self._log(view, f"[INFO] Tracklist: {len(tracks)} brani da cercare su YouTube")
+        self._log(view, f"[INFO] Destinazione: {output_dir}")
 
         _last = [0.0]
         _THROTTLE = 0.10
