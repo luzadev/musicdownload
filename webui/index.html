@@ -144,6 +144,14 @@
           </div>
 
           <div class="field inline">
+            <label class="field-label">Modalità</label>
+            <div class="segmented" id="videoMode">
+              <button type="button" class="seg-btn active" data-mode="video">🎬 Video (MP4)</button>
+              <button type="button" class="seg-btn" data-mode="audio">🎵 Solo audio (MP3)</button>
+            </div>
+          </div>
+
+          <div class="field inline" id="videoQualityField">
             <label class="field-label">Qualità</label>
             <select id="videoQuality" class="input pill input-sm">
               <option value="best">Migliore disponibile</option>
@@ -155,7 +163,10 @@
 
           <div class="hint">
             <span class="hint-ico">ⓘ</span>
-            Per Instagram/Facebook privati serve un file <strong>cookies.txt</strong> valido (Impostazioni → Percorsi).
+            <div>
+              In modalità <strong>Solo audio</strong> il file viene salvato in MP3 al bitrate impostato in Impostazioni → Download.<br>
+              Per Instagram/Facebook privati serve un file <strong>cookies.txt</strong> valido (Impostazioni → Percorsi).
+            </div>
           </div>
         </div>
 

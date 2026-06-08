@@ -418,10 +418,14 @@ def download_video(
     quality: str = "1080p",
     cookies_path: Optional[str] = None,
     progress_callback: Optional[Callable] = None,
+    audio_only: bool = False,
+    audio_bitrate: str = "320K",
 ) -> None:
-    """Scarica video (con audio) da YouTube/TikTok/Instagram/Facebook/etc.
+    """Scarica video (con audio) o solo audio da YouTube/TikTok/Instagram/Facebook/etc.
 
-    quality: "best" | "1080p" | "720p" | "480p"
+    quality: "best" | "1080p" | "720p" | "480p" (ignorato se audio_only=True)
+    audio_only: True -> estrae solo audio in MP3
+    audio_bitrate: bitrate MP3 quando audio_only=True
     Per Instagram/Facebook privati servono cookies validi.
     """
     global _current_process
@@ -461,7 +465,7 @@ def download_video(
         return
 
     total = len(entries)
-    fmt = _video_format(quality)
+    fmt = _video_format(quality) if not audio_only else "bestaudio/best"
 
     for i, entry in enumerate(entries):
         if is_stopped():
@@ -483,16 +487,31 @@ def download_video(
         if progress_callback:
             progress_callback(i, total, title, "downloading", 0)
 
-        cmd = [
-            ytdlp,
-            "-f", fmt,
-            "--merge-output-format", "mp4",
-            "--add-metadata",
-            "--no-check-certificates",
-            "--newline",
-            "--output", str(Path(output_dir) / "%(title)s [%(id)s].%(ext)s"),
-            entry_url,
-        ]
+        if audio_only:
+            cmd = [
+                ytdlp,
+                "-f", fmt,
+                "--extract-audio",
+                "--audio-format", "mp3",
+                "--audio-quality", audio_bitrate.rstrip("Kk"),
+                "--embed-thumbnail",
+                "--add-metadata",
+                "--no-check-certificates",
+                "--newline",
+                "--output", str(Path(output_dir) / "%(title)s [%(id)s].%(ext)s"),
+                entry_url,
+            ]
+        else:
+            cmd = [
+                ytdlp,
+                "-f", fmt,
+                "--merge-output-format", "mp4",
+                "--add-metadata",
+                "--no-check-certificates",
+                "--newline",
+                "--output", str(Path(output_dir) / "%(title)s [%(id)s].%(ext)s"),
+                entry_url,
+            ]
         ffmpeg_dir = find_ffmpeg_dir()
         if ffmpeg_dir:
             cmd.extend(["--ffmpeg-location", ffmpeg_dir])

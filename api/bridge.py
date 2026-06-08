@@ -640,6 +640,7 @@ class Api:
         urls = payload.get("urls") or []
         output_dir = (payload.get("output_dir") or "").strip()
         quality = payload.get("quality") or "1080p"
+        audio_only = bool(payload.get("audio_only", False))
 
         if not urls:
             return {"ok": False, "error": "Nessun URL fornito"}
@@ -648,7 +649,7 @@ class Api:
 
         self._video_thread = threading.Thread(
             target=self._video_worker,
-            args=(list(urls), output_dir, quality),
+            args=(list(urls), output_dir, quality, audio_only),
             daemon=True,
         )
         self._video_thread.start()
@@ -659,10 +660,12 @@ class Api:
         self._log("video", "[INFO] Interruzione richiesta...")
         return {"ok": True}
 
-    def _video_worker(self, urls: list, output_dir: str, quality: str) -> None:
+    def _video_worker(self, urls: list, output_dir: str, quality: str,
+                       audio_only: bool = False) -> None:
         reset_download_stop()
         cfg = load_config()
         cookies_path = cfg.get("cookies_path", "")
+        bitrate = cfg.get("bitrate", "320K")
         total_urls = len(urls)
         multi = total_urls > 1
         view = "video"
@@ -718,9 +721,11 @@ class Api:
 
                 self._emit("video:progress", payload_evt)
 
-            self._log(view, f"[INFO] Video: {url}")
+            mode_lbl = f"Solo audio MP3 {bitrate}" if audio_only else f"Video {quality}"
+            self._log(view, f"[INFO] {mode_lbl}: {url}")
             try:
-                download_video(url, output_dir, quality, cookies_path, progress_cb)
+                download_video(url, output_dir, quality, cookies_path, progress_cb,
+                               audio_only=audio_only, audio_bitrate=bitrate)
             except Exception as e:
                 self._log(view, f"[ERRORE] {e}")
                 continue

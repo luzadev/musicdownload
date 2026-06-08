@@ -375,6 +375,17 @@ $("#videoBrowseBtn").addEventListener("click", async () => {
   }
 });
 
+let videoMode = "video";  // "video" | "audio"
+
+$$("#videoMode .seg-btn").forEach((b) => {
+  b.addEventListener("click", () => {
+    $$("#videoMode .seg-btn").forEach((x) => x.classList.remove("active"));
+    b.classList.add("active");
+    videoMode = b.dataset.mode;
+    $("#videoQualityField").style.display = videoMode === "audio" ? "none" : "";
+  });
+});
+
 $("#videoDownloadBtn").addEventListener("click", async () => {
   const url = $("#videoUrlInput").value.trim();
   if (!url) {
@@ -396,6 +407,7 @@ $("#videoDownloadBtn").addEventListener("click", async () => {
     urls: [url],
     output_dir: state.videoOutputDir,
     quality: $("#videoQuality").value,
+    audio_only: videoMode === "audio",
   });
   if (!res.ok) {
     toast(res.error || "Errore", "error");
