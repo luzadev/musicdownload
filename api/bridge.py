@@ -27,6 +27,7 @@ from core.recorder import (
     start_recording,
     stop_recording as recorder_stop,
     is_recording,
+    get_last_stderr as recorder_last_stderr,
 )
 from core.upgrader import (
     upgrade_folder,
@@ -375,6 +376,11 @@ class Api:
 
     def is_audio_recording(self) -> dict:
         return {"recording": is_recording()}
+
+    def get_recorder_log(self) -> dict:
+        """Ritorna le ultime righe di stderr di ffmpeg dell'ultima sessione
+        di registrazione. Utile per diagnosticare un errore."""
+        return {"ok": True, "lines": recorder_last_stderr(80)}
 
     # ------------------------------------------------------------------
     # Audio folder scan (Upgrade tab)

@@ -222,6 +222,7 @@ const bridgeHandlers = {
       $("#recRefreshBtn").disabled = true;
       $("#recTimer").textContent = "00:00:00";
       $("#recStatus").textContent = "● Registrazione in corso…";
+      $("#recErrorCard").hidden = true;  // pulisci eventuale errore precedente
     } else if (status === "tick") {
       state.rec.seconds = p.seconds || 0;
       $("#recTimer").textContent = formatHms(state.rec.seconds);
@@ -247,7 +248,14 @@ const bridgeHandlers = {
       $("#recDevice").disabled = false;
       $("#recRefreshBtn").disabled = false;
       $("#recStatus").textContent = "";
-      toast("Errore registrazione: " + (p.error || ""), "error");
+      const msg = p.error || "Errore sconosciuto";
+      $("#recErrorMsg").textContent = msg;
+      $("#recErrorCard").hidden = false;
+      $("#recErrorLog").hidden = true;
+      $("#recErrorLog").textContent = "";
+      $("#recCopyLogBtn").hidden = true;
+      $("#recShowLogBtn").textContent = "Mostra log tecnici";
+      toast("Errore registrazione", "error");
     }
   },
 };
@@ -693,6 +701,32 @@ $("#recStartBtn").addEventListener("click", async () => {
 $("#recStopBtn").addEventListener("click", async () => {
   $("#recStopBtn").disabled = true;
   await window.pywebview.api.stop_audio_recording();
+});
+
+$("#recShowLogBtn")?.addEventListener("click", async () => {
+  const pre = $("#recErrorLog");
+  if (!pre.hidden) {
+    pre.hidden = true;
+    $("#recShowLogBtn").textContent = "Mostra log tecnici";
+    $("#recCopyLogBtn").hidden = true;
+    return;
+  }
+  const res = await window.pywebview.api.get_recorder_log();
+  const lines = (res && res.lines) || [];
+  pre.textContent = lines.length ? lines.join("\n") : "(log vuoto)";
+  pre.hidden = false;
+  $("#recShowLogBtn").textContent = "Nascondi log tecnici";
+  $("#recCopyLogBtn").hidden = false;
+});
+
+$("#recCopyLogBtn")?.addEventListener("click", async () => {
+  const text = $("#recErrorLog").textContent || "";
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Log copiato negli appunti", "success");
+  } catch {
+    toast("Impossibile copiare", "error");
+  }
 });
 
 // ============================================================

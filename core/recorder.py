@@ -335,39 +335,78 @@ def start_recording(
 def _extract_friendly_error(rc: int) -> str:
     """Trasforma rc + stderr di ffmpeg in un messaggio leggibile.
     Riconosce i casi tipici: permessi microfono, device occupato,
-    device non disponibile, ..."""
+    device non disponibile, clock drift di BlackHole, ecc.
+
+    Fallback: se non riconosce il pattern, ritorna le ultime righe
+    significative dello stderr cosi' l'utente puo' diagnosticare
+    o aprire un ticket.
+    """
     with _stderr_lock:
         lines = list(_stderr_buf)
 
     text = "\n".join(lines).lower()
+    is_mac = sys.platform == "darwin"
 
-    if "abort" in text and rc == -6 and sys.platform == "darwin":
+    # ---- Errori specifici (priorita' alta) ----
+
+    if "input/output error" in text or "errno 22" in text:
         return (
-            "ffmpeg abortito (errore -6): probabilmente l'app non ha il "
-            "permesso 'Microfono' di macOS. Vai su Preferenze di Sistema "
-            "→ Privacy e sicurezza → Microfono e abilita Terminal/Python. "
-            "Poi riavvia l'app."
+            "Dispositivo audio non pronto (BlackHole o scheda virtuale). "
+            "Spesso si risolve cosi':\n"
+            "  1) Smetti la registrazione e riprova fra 5 secondi\n"
+            "  2) Se persiste, da Terminale: 'sudo killall coreaudiod'\n"
+            "  3) Verifica che nessun'altra app stia gia' registrando il device"
         )
 
-    if any(s in text for s in ("input/output error", "errno 22", "device not configured")):
-        return "Dispositivo non disponibile (riavvia il servizio audio o ricontrolla la selezione)."
+    if "device not configured" in text or "device not available" in text:
+        return "Dispositivo non configurato. Premi 'Aggiorna' e riseleziona."
 
-    if "permission" in text or "not authorized" in text or "not permitted" in text:
-        return "Permesso microfono negato da macOS. Abilita Python/MusicTools in Privacy → Microfono."
+    if "permission" in text or "not authorized" in text or "not permitted" in text \
+       or "tcc" in text or "denied" in text:
+        return _permission_message()
 
-    if "no such device" in text or "no such audio device" in text:
-        return "Dispositivo non trovato. Premi '↻ Aggiorna' e riseleziona."
+    if "no such device" in text or "no such audio device" in text or "invalid device" in text:
+        return "Dispositivo non trovato. Premi 'Aggiorna' e riseleziona dalla lista."
 
-    # Restituisci l'ultima riga utile dello stderr (esclude le righe di banner/progress)
+    # ---- Macro per rc=-6 (SIGABRT) su macOS ----
+    # Su macOS rc=-6 e' quasi sempre il sintomo di un crash di ffmpeg
+    # dovuto al permesso Microfono mancante. La parola 'abort' non
+    # sempre compare nello stderr di ffmpeg recenti.
+    if rc == -6 and is_mac:
+        return _permission_message()
+
+    # ---- Fallback: cerca le ultime righe significative ----
     for line in reversed(lines):
         l = line.strip()
         if not l:
             continue
+        low = l.lower()
+        # Riga AVFoundation/dshow specifica (es. "[avfoundation @ 0x...] Could not...")
         if l.startswith("[avfoundation") or l.startswith("[dshow") or "@ 0x" in l:
             return l
-        if "error" in l.lower() or "fail" in l.lower() or "denied" in l.lower():
+        if "error" in low or "fail" in low or "denied" in low or "cannot" in low:
             return l
-    return f"ffmpeg exit {rc}"
+
+    # Ultima spiaggia: rc + ultime 3 righe di stderr per debug
+    tail = " | ".join(line for line in lines[-3:] if line.strip()) or "(nessuno)"
+    return f"ffmpeg exit {rc}. Ultimo stderr: {tail}"
+
+
+def _permission_message() -> str:
+    """Messaggio standardizzato per il problema permesso Microfono macOS."""
+    return (
+        "Permesso Microfono mancante. Su macOS:\n"
+        "  Impostazioni di Sistema -> Privacy e sicurezza -> Microfono\n"
+        "  Abilita 'Terminal' (se lanci l'app da terminale) o 'MusicTools'\n"
+        "  (se usi l'app installata). Poi riavvia l'app."
+    )
+
+
+def get_last_stderr(max_lines: int = 50) -> list[str]:
+    """Espone le ultime righe di stderr ai fini diagnostici.
+    Chiamato dal bridge per la UI 'Mostra log tecnici'."""
+    with _stderr_lock:
+        return list(_stderr_buf[-max_lines:])
 
 
 def stop_recording() -> dict:
