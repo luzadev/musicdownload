@@ -1,6 +1,6 @@
 # MusicDownload
 
-Applicazione desktop per scaricare **musica** da Spotify, YouTube e SoundCloud, e **video** da YouTube, TikTok, Instagram e Facebook. Include anche un upgrader di qualità per migliorare i file audio già scaricati.
+Applicazione desktop per **scaricare musica e video**, **modificare i metadati** dei file audio e **registrare l'audio** da qualsiasi ingresso del computer.
 
 UI moderna basata su **pywebview** (WebKit su macOS, EdgeChromium su Windows) — frontend HTML/CSS/JS, backend Python.
 
@@ -10,12 +10,22 @@ Repo: <https://github.com/luzadev/musicdownload>
 
 ## Funzionalità
 
-- **Scarica musica** — Incolla un link Spotify (playlist/album/brano), YouTube, SoundCloud o qualsiasi sorgente yt-dlp e scarica in MP3 a 320 kbps. Supporta liste di URL da file `.txt`.
-- **Scarica video** — Incolla un link **YouTube · TikTok · Instagram · Facebook** (o qualsiasi sorgente yt-dlp) e scarica in MP4 alla qualità scelta (best / 1080p / 720p / 480p).
-- **Upgrade qualità** — Scansiona una cartella di file audio e riscarica quelli sotto la soglia kbps impostata.
-- **Auto-skip dei duplicati** — Tracking persistente (`.downloaded_tracks` / `.downloaded_videos`) + scan filename token-based: re-eseguire la stessa playlist salta i brani già presenti, anche se il filename ha "Official Video" / "Lyrics" / ecc.
-- **Aggiornamento automatico** — Verifica disponibilità nuove versioni dalla pagina Impostazioni.
-- **Lista multi-URL** — Carica un file `.txt` con un URL per riga per scaricare più playlist in sequenza.
+| Tab | Cosa fa |
+|---|---|
+| **⬇ Scarica** | Spotify (playlist/album/brano) · YouTube · SoundCloud · lista URL `.txt` · tracklist `.txt` con titoli (es. Beatport Top 100) |
+| **🎬 Video** | YouTube · TikTok · Instagram · Facebook (e 1000+ siti yt-dlp) in MP4, qualità best/1080p/720p/480p |
+| **⚡ Upgrade** | Scansiona una cartella audio e riscarica i file sotto la soglia kbps impostata |
+| **🏷 Metadati** | Editor tag ID3 / MP4 / Vorbis (MP3, M4A, FLAC, WAV) — titolo, artista, album, anno, copertina, BPM, key, commento, origine (macOS) |
+| **● Registra** | Cattura audio in MP3 320 kbps da qualsiasi ingresso (mixer, scheda audio, microfono, BlackHole/loopback) |
+| **⚙ Impostazioni** | Credenziali Spotify, bitrate, soglia HQ, percorsi, tema, controllo aggiornamenti |
+
+### Auto-skip dei duplicati
+
+Tracking persistente (`.downloaded_tracks` / `.downloaded_videos`) + scan filename token-based: re-eseguire la stessa playlist salta i brani già presenti, anche se il filename ha `Official Video` / `Lyrics` / ecc.
+
+### Sottocartella automatica per le tracklist
+
+Se carichi un file `.txt` con titoli (es. `Beatport Top 100 Melodic House & Techno.txt`), l'app crea automaticamente una sottocartella `<output_dir>/Beatport Top 100 Melodic House & Techno/` per non mischiare brani di playlist diverse.
 
 ## Requisiti
 
@@ -39,8 +49,9 @@ Dipendenze principali:
 | Pacchetto | Utilizzo |
 |---|---|
 | `pywebview` | Finestra nativa con WebView (WebKit / EdgeChromium) |
-| `requests` | Chiamate API Spotify |
+| `requests` | Chiamate API Spotify e GitHub |
 | `yt-dlp` | Download audio/video da YouTube e oltre 1000 siti |
+| `mutagen` | Lettura/scrittura tag ID3, MP4, FLAC, WAV |
 | `pyobjc-framework-WebKit` (macOS) | Backend WebKit di pywebview |
 | `pythonnet` (Windows) | Backend EdgeChromium di pywebview |
 
@@ -60,6 +71,34 @@ Le credenziali sono gratuite, non servono Spotify Premium.
 
 Per scaricare **Instagram / Facebook privati** o aggirare il rate-limit di YouTube serve un file `cookies.txt` (formato Netscape). Esportalo dal browser con un'estensione tipo "Get cookies.txt LOCALLY" e imposta il percorso in **Impostazioni → Percorsi**.
 
+## Guida rapida: registrazione audio di sistema (macOS)
+
+macOS non espone nativamente l'output audio del sistema. Per registrare quello che esce dagli speaker (es. uno stream Spotify/YouTube), serve un driver virtuale di **loopback**. Il più diffuso è **BlackHole**, gratuito e open source.
+
+### Installazione
+
+```bash
+brew install blackhole-2ch
+```
+
+### Configurazione
+
+1. **Preferenze di Sistema** → **Audio** → **Uscita** → seleziona **BlackHole 2ch**
+2. Apri la tab **● Registra** in MusicDownload e clicca **↻ Aggiorna**
+3. Nel dropdown vedrai **🔄 BlackHole 2ch (loopback)** — selezionalo
+4. Premi **● REC**, fai partire lo stream, premi **◼ Stop**
+
+### Vuoi sentire ancora l'audio mentre registri?
+
+Crea un **Multi-Output Device** in **Audio MIDI Setup**:
+
+1. Apri **Configurazione MIDI Audio** (`Utility → Audio MIDI Setup`)
+2. `+` in basso a sinistra → **Crea dispositivo aggregato a uscita multipla**
+3. Seleziona **BlackHole 2ch** + i tuoi altoparlanti/cuffie
+4. Imposta questo Multi-Output come uscita di sistema
+
+Così l'audio va contemporaneamente agli speaker (lo senti) e a BlackHole (viene registrato).
+
 ## Struttura progetto
 
 ```
@@ -75,14 +114,16 @@ MusicDownload/
 │   ├── config.py            # Configurazione persistente (JSON)
 │   ├── paths.py             # Ricerca binari (yt-dlp, ffmpeg)
 │   ├── spotify_client.py    # API Spotify (Client Credentials)
-│   ├── downloader.py        # Download audio (playlist Spotify, URL diretti, video)
-│   └── upgrader.py          # Upgrade qualità file esistenti
+│   ├── downloader.py        # Download audio + video (Spotify, yt-dlp diretto)
+│   ├── upgrader.py          # Upgrade qualità file esistenti
+│   ├── metadata.py          # Lettura/scrittura tag ID3/MP4/Vorbis/WAV
+│   └── recorder.py          # Registrazione audio via ffmpeg
 │
 ├── api/
 │   └── bridge.py            # Ponte JS <-> Python (pywebview.js_api)
 │
 └── webui/                   # Frontend
-    ├── index.html           # Single-page, 4 view (Scarica / Video / Upgrade / Impostazioni)
+    ├── index.html           # Single-page, 6 view
     ├── css/style.css        # Tema scuro Spotify-like, gradient hero, animazioni
     └── js/app.js            # Routing, eventi, chiamate API
 ```
@@ -138,8 +179,8 @@ Ogni push di un tag `v*` triggera la pipeline `.github/workflows/build.yml`:
 Per pubblicare una nuova versione:
 
 ```bash
-git tag v1.2.0
-git push origin v1.2.0
+git tag v1.3.0
+git push origin v1.3.0
 ```
 
 Per fare solo una build di test (senza release):
@@ -154,15 +195,7 @@ Le release ufficiali sono disponibili su <https://github.com/luzadev/musicdownlo
 
 ## Aggiornamento app
 
-L'app verifica nuove versioni interrogando un `version.json` remoto. URL configurato in `api/bridge.py` (`UPDATE_URL` nel metodo `check_update`):
-
-```json
-{
-  "version": "v1.2.0",
-  "download_url": "https://github.com/luzadev/musicdownload/releases/latest",
-  "notes": "Descrizione delle novità"
-}
-```
+L'app verifica nuove versioni interrogando l'API GitHub Releases (`api/bridge.py` → `check_update`). Per funzionare end-to-end serve che il repo sia pubblico, altrimenti l'API restituisce 404.
 
 ## Licenza
 
