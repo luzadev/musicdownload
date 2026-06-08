@@ -45,6 +45,10 @@
           <span class="nav-icon">⚙</span>
           <span>Impostazioni</span>
         </button>
+        <button class="nav-item" data-view="guide">
+          <span class="nav-icon">📖</span>
+          <span>Guida</span>
+        </button>
       </nav>
 
       <div class="footer">
@@ -525,6 +529,277 @@
         <div class="save-row">
           <button class="btn btn-primary pill btn-lg" id="saveBtn">Salva Impostazioni</button>
           <div class="save-status" id="saveStatus"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: GUIDA ===== -->
+      <section class="view" id="view-guide">
+        <header class="hero hero-indigo">
+          <div class="hero-content">
+            <div class="hero-eyebrow indigo">GUIDA</div>
+            <h1 class="hero-title">Manuale d'uso</h1>
+            <p class="hero-subtitle">Come usare MusicTools al meglio · setup · troubleshooting</p>
+          </div>
+          <div class="hero-deco">📖</div>
+        </header>
+
+        <div class="guide-layout">
+          <!-- TOC sticky -->
+          <nav class="guide-toc">
+            <div class="micro-label" style="margin-bottom: 8px;">Sommario</div>
+            <a href="#g-intro" class="toc-link">Introduzione</a>
+            <a href="#g-setup" class="toc-link">Setup iniziale</a>
+            <a href="#g-download" class="toc-link">Tab Scarica</a>
+            <a href="#g-video" class="toc-link">Tab Video</a>
+            <a href="#g-upgrade" class="toc-link">Tab Upgrade</a>
+            <a href="#g-meta" class="toc-link">Tab Metadati</a>
+            <a href="#g-record" class="toc-link">Tab Registra</a>
+            <a href="#g-settings" class="toc-link">Impostazioni</a>
+            <a href="#g-update" class="toc-link">Aggiornamenti</a>
+            <a href="#g-troubleshoot" class="toc-link">Troubleshooting</a>
+          </nav>
+
+          <!-- Content -->
+          <article class="guide-content">
+
+            <section id="g-intro" class="g-section">
+              <h2>Introduzione</h2>
+              <p><strong>MusicTools</strong> è una app desktop tutto-in-uno per chi lavora con la musica: scarica brani e video da decine di piattaforme, migliora la qualità dei file esistenti, modifica i tag/metadati e registra l'audio da qualsiasi ingresso del computer.</p>
+              <p>L'interfaccia è organizzata in 6 sezioni accessibili dalla barra laterale: <span class="kbd">⬇ Scarica</span>, <span class="kbd">🎬 Video</span>, <span class="kbd">⚡ Upgrade</span>, <span class="kbd">🏷 Metadati</span>, <span class="kbd">● Registra</span>, <span class="kbd">⚙ Impostazioni</span>.</p>
+            </section>
+
+            <section id="g-setup" class="g-section">
+              <h2>Setup iniziale</h2>
+              <p>Prima di usare l'app, conviene fare 3 cose nelle <strong>Impostazioni</strong>:</p>
+              <ol>
+                <li><strong>Cartella output predefinita</strong> — dove vengono salvati tutti i download.</li>
+                <li><strong>Credenziali Spotify</strong> (solo se vuoi scaricare da link Spotify) — vedi il bottone "Come ottenere le credenziali?" nella tab Impostazioni.</li>
+                <li><strong>cookies.txt</strong> (opzionale) — necessario solo per scaricare contenuti privati Instagram/Facebook o aggirare rate-limit YouTube. Esportalo dal browser con l'estensione "Get cookies.txt LOCALLY".</li>
+              </ol>
+              <p>Tutti i campi vengono salvati automaticamente quando premi <strong>Salva Impostazioni</strong>.</p>
+            </section>
+
+            <section id="g-download" class="g-section">
+              <h2>Tab ⬇ Scarica</h2>
+              <p>Scarica musica in MP3 al bitrate impostato in Impostazioni (default 320 kbps).</p>
+
+              <h3>1 · Da Spotify</h3>
+              <p>Incolla un link a una <strong>playlist, album o brano</strong> (es. <code>open.spotify.com/playlist/...</code>). L'app risolve i metadati via API Spotify e scarica i brani da YouTube. <strong>Richiede</strong> le credenziali API impostate.</p>
+
+              <h3>2 · Da YouTube, SoundCloud e altri</h3>
+              <p>Incolla qualsiasi URL supportato da yt-dlp (singolo video o playlist). Funziona anche con Bandcamp, Mixcloud, ecc.</p>
+
+              <h3>3 · Lista da file .txt</h3>
+              <p>Clicca <strong>📂 Carica lista</strong>. Il file può contenere:</p>
+              <ul>
+                <li><strong>Una URL per riga</strong> — l'app le scarica una dopo l'altra.</li>
+                <li><strong>Tracklist con titoli</strong> (es. Beatport Top 100): formato <code>1. Artista – Titolo (variant) (durata)</code>. L'app riconosce automaticamente il formato e cerca ogni brano su YouTube.</li>
+              </ul>
+              <p>Nel caso tracklist, viene creata automaticamente una <strong>sottocartella</strong> col nome del file (es. <code>Beatport Top 100.txt</code> → <code>Beatport Top 100/</code>).</p>
+
+              <h3>4 · Skip duplicati</h3>
+              <p>Se riesegui la stessa playlist, i brani già scaricati vengono saltati in automatico. Il tracking funziona in due modi:</p>
+              <ul>
+                <li>File <code>.downloaded_tracks</code> dentro la cartella output.</li>
+                <li>Scan dei file presenti, con match dei nomi token-per-token (ignora parole come "Official Video", "Lyrics", "HD"...).</li>
+              </ul>
+            </section>
+
+            <section id="g-video" class="g-section">
+              <h2>Tab 🎬 Video</h2>
+              <p>Scarica video da <strong>YouTube, TikTok, Instagram, Facebook</strong> e oltre 1000 altri siti supportati da yt-dlp.</p>
+
+              <h3>Modalità</h3>
+              <ul>
+                <li><strong>🎬 Video (MP4)</strong> — output video+audio in MP4, qualità a scelta (best / 1080p / 720p / 480p).</li>
+                <li><strong>🎵 Solo audio (MP3)</strong> — estrae solo l'audio in MP3 al bitrate impostato in Impostazioni, con thumbnail embedded come copertina.</li>
+              </ul>
+
+              <h3>Contenuti privati</h3>
+              <p>Per scaricare reel Instagram privati, post Facebook privati o aggirare rate-limit YouTube serve un file <strong><code>cookies.txt</code></strong> valido (formato Netscape). Esportalo dal browser e impostalo in <strong>Impostazioni → Percorsi</strong>.</p>
+
+              <div class="g-box info">
+                <strong>Esempio:</strong> per scaricare la <em>Storia</em> di un utente Instagram seguito, fai login al browser, esporta i cookies, riavvia l'app.
+              </div>
+            </section>
+
+            <section id="g-upgrade" class="g-section">
+              <h2>Tab ⚡ Upgrade qualità</h2>
+              <p>Scansiona una cartella e <strong>riscarica i file sotto la soglia kbps</strong> impostata, sostituendoli con la versione a qualità maggiore.</p>
+              <ol>
+                <li>Seleziona la cartella con i file audio.</li>
+                <li>Imposta la <strong>Soglia HQ (kbps)</strong> — i file con bitrate inferiore verranno riprocessati. Default 310 kbps.</li>
+                <li>(Opzionale) Spunta <strong>Includi sottocartelle</strong> per la scansione ricorsiva.</li>
+                <li>Premi <strong>Avvia Upgrade</strong>.</li>
+              </ol>
+              <p>Per ogni file l'app cerca la versione migliore su YouTube e la sostituisce mantenendo nome originale. I file già processati vengono saltati grazie al tracking <code>.upgraded_tracks</code>.</p>
+            </section>
+
+            <section id="g-meta" class="g-section">
+              <h2>Tab 🏷 Metadati</h2>
+              <p>Editor completo dei tag audio. Apri un file con <strong>📂 Apri file audio</strong>.</p>
+
+              <h3>Formati supportati</h3>
+              <ul>
+                <li><strong>MP3</strong> — ID3v2.3</li>
+                <li><strong>M4A / AAC / MP4</strong> — Apple atoms</li>
+                <li><strong>FLAC</strong> — Vorbis comments</li>
+                <li><strong>WAV</strong> — ID3 embedded + fallback al chunk RIFF LIST/INFO (per file taggati da ffmpeg/Audacity)</li>
+              </ul>
+
+              <h3>Campi editabili</h3>
+              <p>Titolo, artista, album, album artist, anno, traccia (formato <code>1/12</code>), genere, BPM, key musicale, commento, copertina (JPG/PNG), e su macOS anche <strong>kMDItemWhereFroms</strong> (l'extended attribute che traccia l'origine del file scaricato).</p>
+
+              <h3>Copertina</h3>
+              <p>Anteprima 180×180 della copertina corrente. <strong>Cambia copertina</strong> ne carica una nuova; <strong>Rimuovi</strong> la marca per la rimozione al prossimo salvataggio.</p>
+
+              <h3>Annulla modifiche</h3>
+              <p>Premi <strong>↺ Ricarica</strong> per rileggere i tag dal file e scartare le modifiche non salvate.</p>
+            </section>
+
+            <section id="g-record" class="g-section">
+              <h2>Tab ● Registra</h2>
+              <p>Cattura audio in MP3 da qualsiasi ingresso del computer: <strong>mixer, scheda audio esterna, microfono, driver loopback</strong> (BlackHole/Soundflower/VB-Cable). Bitrate selezionabile 128–320 kbps.</p>
+
+              <h3>Setup standard (mixer/microfono)</h3>
+              <ol>
+                <li>Dropdown <strong>Dispositivo</strong>: seleziona la sorgente.</li>
+                <li>Imposta una cartella output e (opzionale) un nome file.</li>
+                <li>Premi <strong>● REC</strong> → registrazione, timer in tempo reale.</li>
+                <li><strong>◼ Stop</strong> → file MP3 finalizzato e linkato sotto.</li>
+              </ol>
+
+              <h3>Registrare l'audio di sistema su macOS (Spotify, YouTube...)</h3>
+              <p>macOS non espone nativamente l'uscita audio. Serve un driver loopback gratuito, il più diffuso è <strong>BlackHole</strong>.</p>
+
+              <h4>Installazione</h4>
+              <p>Apri Terminale e lancia:</p>
+              <pre><code>brew install blackhole-2ch</code></pre>
+              <p>Se subito dopo l'install BlackHole non compare nel dropdown, riavvia il servizio audio:</p>
+              <pre><code>sudo killall coreaudiod</code></pre>
+              <p>(rilancia da solo in pochi secondi, nessun rischio)</p>
+
+              <h4>Permesso microfono</h4>
+              <p>macOS richiede il permesso "Microfono" per leggere da BlackHole via AVFoundation. Vai su <strong>Preferenze di Sistema → Privacy e sicurezza → Microfono</strong> e abilita Terminal/MusicTools. Se la voce non c'è, comparirà un popup la prima volta che premi REC.</p>
+
+              <h4>Setup A — minimo (non senti l'audio durante)</h4>
+              <ol>
+                <li>Click icona altoparlante nella barra menu → <strong>Output → BlackHole 2ch</strong></li>
+                <li>Fai partire Spotify (non sentirai nulla — l'audio va a BlackHole)</li>
+                <li>Tab Registra → dispositivo <strong>🔄 BlackHole 2ch (loopback)</strong> → REC</li>
+              </ol>
+
+              <h4>Setup B — completo (registri E senti l'audio)</h4>
+              <ol>
+                <li>Apri <strong>Configurazione MIDI Audio</strong> (<code>Applicazioni → Utility</code>)</li>
+                <li>In basso a sinistra: <strong>+ → Crea dispositivo aggregato a uscita multipla</strong></li>
+                <li>Spunta sia <strong>BlackHole 2ch</strong> sia i tuoi <strong>Altoparlanti integrati</strong></li>
+                <li>Imposta <strong>BlackHole 2ch come Master Device</strong> (menu in alto)</li>
+                <li>Abilita <strong>Drift Correction</strong> sulla riga degli altoparlanti</li>
+                <li>(Opzionale) Rinomina in <code>Speakers + BlackHole</code></li>
+                <li>Preferenze di Sistema → Audio → Uscita → seleziona <code>Speakers + BlackHole</code></li>
+                <li>Nella tab Registra: scegli <strong>🔄 BlackHole 2ch (loopback)</strong>, non il dispositivo aggregato</li>
+              </ol>
+              <div class="g-box success">
+                Adesso ogni audio del sistema viene riprodotto sugli speaker (lo senti) e contemporaneamente catturato da BlackHole (viene registrato).
+              </div>
+            </section>
+
+            <section id="g-settings" class="g-section">
+              <h2>Impostazioni</h2>
+
+              <h3>Spotify API</h3>
+              <p>Le credenziali API Spotify sono <strong>gratuite</strong> e non richiedono Premium. Vai su <a href="#" data-ext="https://developer.spotify.com/dashboard">Spotify Developer Dashboard</a>, "Create app", compila i campi (Redirect URI <code>http://localhost:8888/callback</code>, seleziona "Web API"), e copia Client ID + Client Secret nei campi corrispondenti.</p>
+
+              <h3>Download</h3>
+              <ul>
+                <li><strong>Bitrate</strong> — qualità target per gli MP3 (128/192/256/320 kbps).</li>
+                <li><strong>Soglia HQ</strong> — soglia kbps per la tab Upgrade. I file sotto questa soglia vengono riscaricati.</li>
+              </ul>
+
+              <h3>Percorsi</h3>
+              <ul>
+                <li><strong>cookies.txt</strong> — per contenuti privati/protetti.</li>
+                <li><strong>Cartella output predefinita</strong> — viene proposta in tutte le tab.</li>
+              </ul>
+            </section>
+
+            <section id="g-update" class="g-section">
+              <h2>Aggiornamenti</h2>
+              <p>In <strong>Impostazioni → Aggiornamenti</strong> trovi il bottone <strong>Controlla aggiornamenti</strong>. L'app interroga la pagina release di GitHub e ti mostra se c'è una versione nuova.</p>
+              <p>Se è disponibile un aggiornamento, comparirà un secondo bottone <strong>Scarica aggiornamento</strong> che apre direttamente il browser sull'asset corretto (macOS o Windows) della release più recente.</p>
+            </section>
+
+            <section id="g-troubleshoot" class="g-section">
+              <h2>Troubleshooting</h2>
+
+              <table class="g-table">
+                <thead><tr><th>Sintomo</th><th>Causa probabile</th><th>Fix</th></tr></thead>
+                <tbody>
+                  <tr>
+                    <td>BlackHole non compare nel dropdown della tab Registra</td>
+                    <td>CoreAudio non l'ha ancora caricato dopo l'install</td>
+                    <td><code>sudo killall coreaudiod</code> + premi <strong>↻ Aggiorna</strong></td>
+                  </tr>
+                  <tr>
+                    <td>"Permesso microfono mancante" o errore ffmpeg -6</td>
+                    <td>macOS nega l'accesso al device</td>
+                    <td>Privacy e sicurezza → Microfono → abilita Terminal/MusicTools</td>
+                  </tr>
+                  <tr>
+                    <td>File MP3 della registrazione è muto</td>
+                    <td>L'output di sistema non passa da BlackHole</td>
+                    <td>Imposta output su BlackHole o Multi-Output Device (Setup A/B)</td>
+                  </tr>
+                  <tr>
+                    <td>Spotify dice "Autenticazione fallita"</td>
+                    <td>Client ID/Secret mancanti o errati</td>
+                    <td>Impostazioni → Spotify API → ripeti la procedura</td>
+                  </tr>
+                  <tr>
+                    <td>Instagram/Facebook non scarica</td>
+                    <td>Contenuto privato senza cookies validi</td>
+                    <td>Esporta cookies.txt dal browser dopo login</td>
+                  </tr>
+                  <tr>
+                    <td>Brano scaricato è sbagliato (versione cover invece dell'originale)</td>
+                    <td>Ricerca YouTube ha preso il primo risultato</td>
+                    <td>Modifica la query nel file di tracklist (più dettagli artista/titolo)</td>
+                  </tr>
+                  <tr>
+                    <td>Tag non vengono letti su un WAV</td>
+                    <td>File usa solo chunk INFO non ID3 (raro)</td>
+                    <td>L'app ora gestisce entrambi — controlla di avere v1.2.1+</td>
+                  </tr>
+                  <tr>
+                    <td>Stop button non risponde durante il download</td>
+                    <td>yt-dlp sta finalizzando il file</td>
+                    <td>Attendi qualche secondo, il processo si chiude dopo l'I/O</td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <h3>Reset configurazione</h3>
+              <p>Se vuoi azzerare tutte le impostazioni, cancella il file <code>config.json</code>. Posizione:</p>
+              <ul>
+                <li><strong>macOS</strong>: <code>~/Library/Application Support/MusicTools/config.json</code></li>
+                <li><strong>Windows</strong>: <code>%APPDATA%\MusicTools\config.json</code></li>
+              </ul>
+              <p>Verrà ricreato con valori di default al prossimo avvio.</p>
+            </section>
+
+            <section class="g-section">
+              <h2>Risorse</h2>
+              <ul>
+                <li><a href="#" data-ext="https://github.com/luzadev/musicdownload">Codice sorgente su GitHub</a></li>
+                <li><a href="#" data-ext="https://github.com/luzadev/musicdownload/releases">Tutte le release</a></li>
+                <li><a href="#" data-ext="https://github.com/yt-dlp/yt-dlp/wiki/FAQ">FAQ di yt-dlp</a></li>
+                <li><a href="#" data-ext="https://existential.audio/blackhole/">BlackHole — driver loopback macOS</a></li>
+              </ul>
+              <p style="color: var(--text-3); font-size: 12px; margin-top: 20px;">MusicTools — by <strong style="color: var(--green);">LuZa</strong></p>
+            </section>
+
+          </article>
         </div>
       </section>
 

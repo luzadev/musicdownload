@@ -488,10 +488,54 @@ $("#recRefreshBtn").addEventListener("click", refreshRecDevices);
 
 $("#recOpenGuide").addEventListener("click", (e) => {
   e.preventDefault();
-  window.pywebview.api.open_external_url(
-    "https://github.com/luzadev/musicdownload#guida-rapida-registrazione-audio-di-sistema-macos"
-  );
+  showView("guide");
+  setTimeout(() => {
+    const el = document.getElementById("g-record");
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 80);
 });
+
+// ============================================================
+// GUIDE — link esterni + TOC active highlight
+// ============================================================
+document.querySelectorAll("#view-guide a[data-ext]").forEach((a) => {
+  a.addEventListener("click", (e) => {
+    e.preventDefault();
+    window.pywebview.api.open_external_url(a.dataset.ext);
+  });
+});
+
+document.querySelectorAll(".toc-link").forEach((a) => {
+  a.addEventListener("click", (e) => {
+    e.preventDefault();
+    const id = a.getAttribute("href").slice(1);
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+});
+
+// Aggiorna TOC active in base allo scroll della view
+function setupGuideObserver() {
+  const sections = document.querySelectorAll(".g-section[id]");
+  const tocLinks = document.querySelectorAll(".toc-link");
+  if (!sections.length || !tocLinks.length) return;
+
+  const main = document.querySelector(".main");
+  const observer = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (!entry.isIntersecting) return;
+        const id = entry.target.id;
+        tocLinks.forEach((l) => {
+          l.classList.toggle("active", l.getAttribute("href") === "#" + id);
+        });
+      });
+    },
+    { root: main, rootMargin: "-20% 0px -65% 0px", threshold: 0 }
+  );
+  sections.forEach((s) => observer.observe(s));
+}
+setupGuideObserver();
 
 $("#recBrowseBtn").addEventListener("click", async () => {
   const path = await window.pywebview.api.browse_directory();
