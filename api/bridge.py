@@ -21,6 +21,12 @@ from core.downloader import (
 )
 from core.spotify_client import get_access_token, resolve_spotify_url
 from core.metadata import read_metadata, write_metadata, SUPPORTED_EXTS
+from core.recorder import (
+    list_input_devices,
+    start_recording,
+    stop_recording as recorder_stop,
+    is_recording,
+)
 from core.upgrader import (
     upgrade_folder,
     request_stop as request_upgrade_stop,
@@ -281,6 +287,47 @@ class Api:
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # ------------------------------------------------------------------
+    # Recorder
+    # ------------------------------------------------------------------
+    def list_audio_inputs(self) -> dict:
+        try:
+            return {"ok": True, "devices": list_input_devices()}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "devices": []}
+
+    def start_audio_recording(self, payload: dict) -> dict:
+        device_id = str(payload.get("device_id", "")).strip()
+        output_dir = (payload.get("output_dir") or "").strip()
+        filename = (payload.get("filename") or "").strip()
+        bitrate = (payload.get("bitrate") or "320k").strip()
+
+        if not device_id:
+            return {"ok": False, "error": "Dispositivo non selezionato"}
+        if not output_dir:
+            return {"ok": False, "error": "Cartella output non impostata"}
+        if not filename:
+            filename = f"Registrazione_{time.strftime('%Y%m%d_%H%M%S')}.mp3"
+        if not filename.lower().endswith(".mp3"):
+            filename += ".mp3"
+
+        out_path = os.path.join(output_dir, filename)
+
+        def cb(status, payload_evt):
+            payload_evt = dict(payload_evt or {})
+            payload_evt["status"] = status
+            self._emit("recording:event", payload_evt)
+
+        res = start_recording(device_id, out_path, bitrate=bitrate,
+                              progress_callback=cb)
+        return res
+
+    def stop_audio_recording(self) -> dict:
+        return recorder_stop()
+
+    def is_audio_recording(self) -> dict:
+        return {"recording": is_recording()}
 
     # ------------------------------------------------------------------
     # Audio folder scan (Upgrade tab)

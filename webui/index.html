@@ -37,6 +37,10 @@
           <span class="nav-icon">🏷</span>
           <span>Metadati</span>
         </button>
+        <button class="nav-item" data-view="record">
+          <span class="nav-icon">●</span>
+          <span>Registra</span>
+        </button>
         <button class="nav-item" data-view="settings">
           <span class="nav-icon">⚙</span>
           <span>Impostazioni</span>
@@ -238,6 +242,78 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="upLog"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: REGISTRA ===== -->
+      <section class="view" id="view-record">
+        <header class="hero hero-red">
+          <div class="hero-content">
+            <div class="hero-eyebrow red">REGISTRAZIONE</div>
+            <h1 class="hero-title">Cattura audio</h1>
+            <p class="hero-subtitle">Registra in MP3 320 kbps da qualsiasi ingresso audio (mixer, scheda, microfono, BlackHole/loopback)</p>
+          </div>
+          <div class="hero-deco">●</div>
+        </header>
+
+        <h2 class="section-label">Dispositivo</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">Ingresso audio</label>
+            <div class="row">
+              <select id="recDevice" class="input pill">
+                <option value="">Caricamento…</option>
+              </select>
+              <button class="btn btn-ghost pill btn-sm" id="recRefreshBtn">↻ Aggiorna</button>
+            </div>
+          </div>
+
+          <div class="hint" id="recHint">
+            <span class="hint-ico">ⓘ</span>
+            Per registrare l'audio di sistema (Spotify/YouTube/ecc.) installa <strong>BlackHole</strong> (gratuito, brew install blackhole-2ch) e poi imposta l'output di sistema su BlackHole.
+          </div>
+        </div>
+
+        <h2 class="section-label">Destinazione</h2>
+        <div class="card">
+          <div class="field">
+            <label class="field-label">Cartella output</label>
+            <div class="row">
+              <div class="path-display" id="recPathDisplay">Nessuna cartella selezionata</div>
+              <button class="btn btn-ghost pill btn-sm" id="recBrowseBtn">Sfoglia</button>
+            </div>
+          </div>
+
+          <div class="field">
+            <label class="field-label">Nome file (opzionale)</label>
+            <input type="text" id="recFilename" class="input pill" placeholder="Registrazione_AAAAMMGG_HHMMSS.mp3" />
+          </div>
+
+          <div class="field inline">
+            <label class="field-label">Bitrate</label>
+            <select id="recBitrate" class="input pill input-sm">
+              <option value="128k">128 kbps</option>
+              <option value="192k">192 kbps</option>
+              <option value="256k">256 kbps</option>
+              <option value="320k" selected>320 kbps</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card actions">
+          <button class="btn btn-red pill btn-lg" id="recStartBtn">
+            <span class="ico">●</span> REC
+          </button>
+          <button class="btn btn-danger pill btn-lg" id="recStopBtn" disabled>
+            <span class="ico">◼</span> Stop
+          </button>
+          <div class="rec-timer" id="recTimer">00:00:00</div>
+          <div class="rec-status" id="recStatus"></div>
+        </div>
+
+        <div class="card" id="recOutputCard" hidden>
+          <div class="micro-label">Ultima registrazione</div>
+          <div class="rec-result" id="recResult"></div>
         </div>
       </section>
 

@@ -16,6 +16,7 @@ const state = {
   upgrading: false,
   videoDownloading: false,
   meta: { path: "", newCoverPath: "", removeCover: false },
+  rec: { devices: [], outputDir: "", recording: false, seconds: 0 },
 };
 
 // Wait for pywebview ready
@@ -104,7 +105,55 @@ const bridgeHandlers = {
     $("#videoDownloadBtn").disabled = false;
     $("#stopVideoBtn").disabled = true;
   },
+
+  "recording:event": (p) => {
+    const status = p.status;
+    if (status === "started") {
+      state.rec.recording = true;
+      state.rec.seconds = 0;
+      $("#recStartBtn").disabled = true;
+      $("#recStartBtn").classList.add("recording");
+      $("#recStopBtn").disabled = false;
+      $("#recDevice").disabled = true;
+      $("#recRefreshBtn").disabled = true;
+      $("#recTimer").textContent = "00:00:00";
+      $("#recStatus").textContent = "● Registrazione in corso…";
+    } else if (status === "tick") {
+      state.rec.seconds = p.seconds || 0;
+      $("#recTimer").textContent = formatHms(state.rec.seconds);
+    } else if (status === "stopped") {
+      state.rec.recording = false;
+      $("#recStartBtn").disabled = false;
+      $("#recStartBtn").classList.remove("recording");
+      $("#recStopBtn").disabled = true;
+      $("#recDevice").disabled = false;
+      $("#recRefreshBtn").disabled = false;
+      $("#recStatus").textContent = "";
+      $("#recOutputCard").hidden = false;
+      $("#recResult").innerHTML = `
+        <span class="badge-dur">${formatHms(p.seconds || 0)}</span>
+        ${p.output_path || ""}
+      `;
+      toast("Registrazione salvata", "success");
+    } else if (status === "error") {
+      state.rec.recording = false;
+      $("#recStartBtn").disabled = false;
+      $("#recStartBtn").classList.remove("recording");
+      $("#recStopBtn").disabled = true;
+      $("#recDevice").disabled = false;
+      $("#recRefreshBtn").disabled = false;
+      $("#recStatus").textContent = "";
+      toast("Errore registrazione: " + (p.error || ""), "error");
+    }
+  },
 };
+
+function formatHms(sec) {
+  const h = Math.floor(sec / 3600).toString().padStart(2, "0");
+  const m = Math.floor((sec % 3600) / 60).toString().padStart(2, "0");
+  const s = Math.floor(sec % 60).toString().padStart(2, "0");
+  return `${h}:${m}:${s}`;
+}
 
 // ============================================================
 // Logging
@@ -196,6 +245,34 @@ async function init() {
 
   // Upgrade tab — default threshold
   $("#upThreshold").value = state.config.hq_threshold || 310;
+
+  // Record tab — default output dir + carica dispositivi
+  state.rec.outputDir = state.config.output_dir || "";
+  if (state.rec.outputDir) {
+    $("#recPathDisplay").textContent = state.rec.outputDir;
+    $("#recPathDisplay").classList.remove("empty");
+  }
+  await refreshRecDevices();
+}
+
+async function refreshRecDevices() {
+  const res = await window.pywebview.api.list_audio_inputs();
+  const select = $("#recDevice");
+  select.innerHTML = "";
+  state.rec.devices = res.devices || [];
+  if (!state.rec.devices.length) {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "Nessun dispositivo trovato";
+    select.appendChild(opt);
+    return;
+  }
+  for (const d of state.rec.devices) {
+    const opt = document.createElement("option");
+    opt.value = d.id;
+    opt.textContent = d.is_virtual ? `🔄 ${d.name} (loopback)` : d.name;
+    select.appendChild(opt);
+  }
 }
 
 // ============================================================
@@ -390,6 +467,46 @@ $("#upgradeBtn").addEventListener("click", async () => {
 $("#stopUpgradeBtn").addEventListener("click", async () => {
   await window.pywebview.api.stop_upgrade();
   $("#stopUpgradeBtn").disabled = true;
+});
+
+// ============================================================
+// RECORDER tab
+// ============================================================
+$("#recRefreshBtn").addEventListener("click", refreshRecDevices);
+
+$("#recBrowseBtn").addEventListener("click", async () => {
+  const path = await window.pywebview.api.browse_directory();
+  if (path) {
+    state.rec.outputDir = path;
+    $("#recPathDisplay").textContent = path;
+    $("#recPathDisplay").classList.remove("empty");
+  }
+});
+
+$("#recStartBtn").addEventListener("click", async () => {
+  const deviceId = $("#recDevice").value;
+  if (!deviceId) {
+    toast("Seleziona un dispositivo", "error");
+    return;
+  }
+  if (!state.rec.outputDir) {
+    toast("Seleziona una cartella di destinazione", "error");
+    return;
+  }
+  const res = await window.pywebview.api.start_audio_recording({
+    device_id: deviceId,
+    output_dir: state.rec.outputDir,
+    filename: $("#recFilename").value.trim(),
+    bitrate: $("#recBitrate").value,
+  });
+  if (!res.ok) {
+    toast(res.error || "Errore", "error");
+  }
+});
+
+$("#recStopBtn").addEventListener("click", async () => {
+  $("#recStopBtn").disabled = true;
+  await window.pywebview.api.stop_audio_recording();
 });
 
 // ============================================================
