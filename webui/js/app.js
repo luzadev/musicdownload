@@ -414,6 +414,15 @@ function populateMetaForm(d) {
   $("#metaKey").value = d.key || "";
   $("#metaComment").value = d.comment || "";
 
+  // WhereFroms (macOS only)
+  if (d.is_macos) {
+    $("#metaWhereFromField").hidden = false;
+    $("#metaWhereFrom").value = (d.where_from || []).join("\n");
+  } else {
+    $("#metaWhereFromField").hidden = true;
+    $("#metaWhereFrom").value = "";
+  }
+
   // Info riga sotto il path
   const info = $("#metaInfo");
   info.hidden = false;
@@ -511,6 +520,10 @@ $("#metaSaveBtn").addEventListener("click", async () => {
       bpm: $("#metaBpm").value,
       key: $("#metaKey").value,
       comment: $("#metaComment").value,
+      where_from: $("#metaWhereFrom").value
+        .split("\n")
+        .map(s => s.trim())
+        .filter(Boolean),
     },
     cover_path: state.meta.newCoverPath,
     remove_cover: state.meta.removeCover,

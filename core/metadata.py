@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import base64
+import plistlib
+import subprocess
 import struct
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -18,6 +21,53 @@ from mutagen.wave import WAVE
 
 
 SUPPORTED_EXTS = (".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav")
+
+_WHERE_FROM_ATTR = "com.apple.metadata:kMDItemWhereFroms"
+
+
+def _read_where_from(path: str) -> list:
+    """Legge l'xattr macOS 'kMDItemWhereFroms' (lista di URL/origini).
+    Ritorna [] se non e macOS o se l'attributo non esiste."""
+    if sys.platform != "darwin":
+        return []
+    try:
+        res = subprocess.run(
+            ["xattr", "-px", _WHERE_FROM_ATTR, path],
+            capture_output=True, text=True, timeout=5,
+        )
+        if res.returncode != 0:
+            return []
+        hex_str = "".join(res.stdout.split())
+        if not hex_str:
+            return []
+        raw = bytes.fromhex(hex_str)
+        items = plistlib.loads(raw)
+        if isinstance(items, list):
+            return [str(x) for x in items]
+        return [str(items)]
+    except Exception:
+        return []
+
+
+def _write_where_from(path: str, urls: list) -> None:
+    """Scrive l'xattr macOS 'kMDItemWhereFroms'. Lista vuota -> rimuove."""
+    if sys.platform != "darwin":
+        return
+    try:
+        clean = [u.strip() for u in (urls or []) if u and u.strip()]
+        if not clean:
+            subprocess.run(
+                ["xattr", "-d", _WHERE_FROM_ATTR, path],
+                capture_output=True, timeout=5,
+            )
+            return
+        data = plistlib.dumps(clean, fmt=plistlib.FMT_BINARY)
+        subprocess.run(
+            ["xattr", "-wx", _WHERE_FROM_ATTR, data.hex(), path],
+            capture_output=True, timeout=5, check=True,
+        )
+    except Exception:
+        pass
 
 
 def _text(value) -> str:
@@ -242,6 +292,8 @@ def read_metadata(path: str) -> dict:
         "bpm": "", "key": "",
         "duration": 0, "bitrate": 0,
         "cover_base64": "", "cover_mime": "",
+        "where_from": _read_where_from(str(p)),
+        "is_macos": sys.platform == "darwin",
     }
 
     audio = MutagenFile(str(p))
@@ -448,7 +500,9 @@ def _write_wav(path: str, data: dict, cover_path: Optional[str], remove_cover: b
 def write_metadata(path: str, data: dict, cover_path: Optional[str] = None,
                     remove_cover: bool = False) -> None:
     """Salva i metadati. Se remove_cover=True rimuove la copertina esistente
-    senza sostituirla. Se cover_path e fornito, la sostituisce."""
+    senza sostituirla. Se cover_path e fornito, la sostituisce.
+    Su macOS aggiorna anche l'xattr kMDItemWhereFroms se data['where_from']
+    e fornito (lista di stringhe)."""
     ext = Path(path).suffix.lower()
     if ext == ".mp3":
         _write_mp3(path, data, cover_path, remove_cover)
@@ -460,3 +514,7 @@ def write_metadata(path: str, data: dict, cover_path: Optional[str] = None,
         _write_wav(path, data, cover_path, remove_cover)
     else:
         raise ValueError(f"Formato non supportato: {ext}")
+
+    # macOS extended attribute: kMDItemWhereFroms (lista URL/origini)
+    if "where_from" in data:
+        _write_where_from(path, data.get("where_from") or [])
