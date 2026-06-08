@@ -248,13 +248,13 @@ class Api:
     # ------------------------------------------------------------------
     def pick_audio_file(self) -> str:
         return self.browse_file([
-            "Audio (*.mp3 *.m4a *.mp4 *.aac *.flac)",
+            "Audio (*.mp3;*.m4a;*.mp4;*.aac;*.flac)",
             "All files (*.*)",
         ])
 
     def pick_image_file(self) -> str:
         return self.browse_file([
-            "Immagini (*.jpg *.jpeg *.png)",
+            "Immagini (*.jpg;*.jpeg;*.png)",
             "All files (*.*)",
         ])
 
