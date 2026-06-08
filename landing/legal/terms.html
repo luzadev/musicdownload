@@ -9,9 +9,26 @@
     .legal-doc { max-width: 760px; margin: 0 auto; padding: 60px 24px 100px; }
     .legal-doc h1 { font-size: 36px; font-weight: 900; letter-spacing: -0.02em; margin-bottom: 8px; }
     .legal-doc .updated { color: var(--text-dim); font-size: 13px; margin-bottom: 36px; }
-    .legal-doc h2 { font-size: 20px; margin-top: 32px; font-weight: 800; }
+    .legal-doc h2 { font-size: 20px; margin-top: 36px; font-weight: 800; }
+    .legal-doc h3 { font-size: 16px; margin-top: 22px; font-weight: 700; color: var(--text); }
     .legal-doc p, .legal-doc li { color: var(--text-muted); font-size: 15px; line-height: 1.65; }
+    .legal-doc strong { color: var(--text); }
     .legal-doc a { color: var(--accent); }
+    .legal-doc .toc {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 18px 22px; margin-bottom: 32px;
+    }
+    .legal-doc .toc ol { margin: 0; padding-left: 22px; }
+    .legal-doc .toc li { margin: 4px 0; }
+    .legal-doc .toc a { color: var(--text-muted); font-size: 14px; }
+    .legal-doc .toc a:hover { color: var(--accent); }
+    .legal-doc .warn-box {
+      background: rgba(248, 113, 113, 0.08);
+      border: 1px solid rgba(248, 113, 113, 0.4);
+      border-left: 4px solid var(--red);
+      padding: 16px 20px; border-radius: 10px; margin: 22px 0;
+    }
+    .legal-doc .warn-box p { margin: 0; color: var(--text); }
   </style>
 </head>
 <body>
@@ -20,36 +37,190 @@
   </div></header>
 
   <main class="legal-doc">
-    <h1>Termini di servizio</h1>
+    <h1>Termini di servizio e Licenza d'uso</h1>
     <p class="updated">Ultimo aggiornamento: 8 giugno 2026</p>
 
-    <h2>1. Identificazione</h2>
-    <p>MusicTools e' un software desktop sviluppato e distribuito da Luciano Zappacosta (in seguito "Editore"), email <a href="mailto:info@djluza.com">info@djluza.com</a>.</p>
+    <div class="warn-box">
+      <p><strong>Leggi attentamente.</strong> Acquistando, installando o usando MusicTools accetti i presenti Termini. Se non li accetti, non installare ne' usare il software.</p>
+    </div>
 
-    <h2>2. Licenza d'uso</h2>
-    <p>L'acquisto di una licenza MusicTools concede all'utente il diritto personale e non trasferibile di installare e usare il software su un massimo di 3 dispositivi controllati dall'utente. La licenza e' a vita: non scade ne' richiede pagamenti ricorrenti.</p>
-    <p>E' vietato distribuire, rivendere, decompilare o modificare il codice del software al di fuori di quanto consentito dalla legge.</p>
+    <div class="toc">
+      <strong>Indice</strong>
+      <ol>
+        <li><a href="#s1">Definizioni</a></li>
+        <li><a href="#s2">Accettazione dei termini</a></li>
+        <li><a href="#s3">Licenza d'uso (EULA)</a></li>
+        <li><a href="#s4">Restrizioni d'uso</a></li>
+        <li><a href="#s5">Acceptable Use Policy</a></li>
+        <li><a href="#s6">Copyright e responsabilita dell'utente</a></li>
+        <li><a href="#s7">Marchi e affiliazioni con terze parti</a></li>
+        <li><a href="#s8">Procedura DMCA / segnalazioni</a></li>
+        <li><a href="#s9">Esclusione di garanzie</a></li>
+        <li><a href="#s10">Limitazione di responsabilita</a></li>
+        <li><a href="#s11">Manleva (indemnification)</a></li>
+        <li><a href="#s12">Pagamenti e fatturazione</a></li>
+        <li><a href="#s13">Diritto di recesso e rimborsi</a></li>
+        <li><a href="#s14">Aggiornamenti e supporto</a></li>
+        <li><a href="#s15">Risoluzione</a></li>
+        <li><a href="#s16">Modifiche ai termini</a></li>
+        <li><a href="#s17">Legge applicabile e foro competente</a></li>
+        <li><a href="#s18">Contatti</a></li>
+      </ol>
+    </div>
 
-    <h2>3. Uso del software</h2>
-    <p>MusicTools e' uno strumento di automazione che usa librerie open-source di terze parti (yt-dlp, ffmpeg, mutagen). L'Editore non fornisce ne' ospita contenuti audio/video. L'utente e' l'unico responsabile dei contenuti scaricati o registrati e del rispetto dei termini d'uso delle piattaforme di origine e delle leggi sul copyright.</p>
+    <h2 id="s1">1. Definizioni</h2>
+    <p>Nel presente documento:</p>
+    <ul>
+      <li><strong>"Editore"</strong> — Luciano Zappacosta, in qualita' di sviluppatore e distributore del software, contattabile a <a href="mailto:info@djluza.com">info@djluza.com</a>.</li>
+      <li><strong>"Software" o "MusicTools"</strong> — l'applicazione desktop denominata MusicTools, comprensiva di codice eseguibile, asset, documentazione e aggiornamenti.</li>
+      <li><strong>"Utente"</strong> — la persona fisica o giuridica che acquista, installa o utilizza il Software.</li>
+      <li><strong>"Licenza"</strong> — il diritto d'uso personale concesso all'Utente dietro pagamento, come descritto al §3.</li>
+      <li><strong>"Contenuti"</strong> — file audio, video, immagini, metadati o altri materiali che l'Utente sceglie di scaricare, registrare o modificare tramite il Software.</li>
+    </ul>
 
-    <h2>4. Pagamenti e fatturazione</h2>
-    <p>I pagamenti sono gestiti da Lemon Squeezy Inc., che opera come Merchant of Record. Lemon Squeezy emette la fattura/ricevuta fiscale e gestisce l'IVA secondo la giurisdizione del cliente.</p>
+    <h2 id="s2">2. Accettazione dei termini</h2>
+    <p>L'installazione, l'attivazione o l'uso del Software costituiscono accettazione integrale e incondizionata dei presenti Termini. Se l'Utente non accetta una qualsiasi disposizione, deve interrompere l'uso del Software, disinstallarlo e richiedere il rimborso (vedi §13) entro i termini previsti.</p>
 
-    <h2>5. Diritto di recesso</h2>
-    <p>L'utente ha diritto di recedere entro 14 giorni dall'acquisto richiedendo il rimborso a <a href="mailto:info@djluza.com">info@djluza.com</a>. Il rimborso viene eseguito sullo stesso metodo di pagamento usato per l'acquisto. Dopo il rimborso la licenza viene revocata e l'app non potra' piu' essere attivata.</p>
+    <h2 id="s3">3. Licenza d'uso (EULA)</h2>
+    <h3>3.1 Concessione</h3>
+    <p>L'Editore concede all'Utente una licenza <strong>personale, non esclusiva, non trasferibile, non sublicenziabile e revocabile</strong> per:</p>
+    <ul>
+      <li>Installare il Software su un massimo di <strong>3 (tre) dispositivi</strong> di proprieta' o sotto il controllo esclusivo dell'Utente;</li>
+      <li>Utilizzare il Software per finalita' strettamente <strong>personali e non commerciali</strong>;</li>
+      <li>Ricevere gli aggiornamenti rilasciati dall'Editore secondo §14.</li>
+    </ul>
 
-    <h2>6. Aggiornamenti</h2>
-    <p>L'Editore si impegna a fornire aggiornamenti gratuiti per tutta la vita del prodotto. Non e' garantito un calendario specifico di rilascio.</p>
+    <h3>3.2 Durata</h3>
+    <p>La Licenza e' a tempo indeterminato ("a vita") salvo i casi di risoluzione descritti al §15.</p>
 
-    <h2>7. Limitazione di responsabilita'</h2>
-    <p>Il software e' fornito "cosi' com'e'". L'Editore non e' responsabile per perdite di dati, danni indiretti o consequenziali derivanti dall'uso del software, salvo nei casi previsti come inderogabili dalla legge applicabile.</p>
+    <h3>3.3 Proprieta' intellettuale</h3>
+    <p>Il Software resta di esclusiva proprieta' intellettuale dell'Editore. La Licenza concede solo un diritto d'uso e non trasferisce alcun diritto di proprieta' all'Utente. Marchi, design, codice sorgente e documentazione sono protetti dalle leggi sul diritto d'autore italiane e internazionali.</p>
 
-    <h2>8. Modifiche ai termini</h2>
-    <p>L'Editore puo' aggiornare questi termini in qualsiasi momento. La versione corrente e' sempre disponibile a questa URL. Per modifiche sostanziali sara' inviata una notifica via email agli utenti registrati.</p>
+    <h2 id="s4">4. Restrizioni d'uso</h2>
+    <p>L'Utente <strong>NON</strong> puo':</p>
+    <ul>
+      <li>Copiare, distribuire, vendere, affittare, prestare, sublicenziare o rendere altrimenti disponibile il Software a terzi;</li>
+      <li>Decompilare, disassemblare, fare reverse-engineering o tentare di ricavare il codice sorgente, salvo nei limiti consentiti da norme inderogabili (es. art. 64-quater l.d.a.);</li>
+      <li>Rimuovere, alterare od oscurare avvisi di copyright, marchi o note legali presenti nel Software;</li>
+      <li>Aggirare, disattivare o manomettere i meccanismi di attivazione della Licenza;</li>
+      <li>Condividere la propria chiave di licenza o farne uso simultaneo su un numero di dispositivi superiore a quello consentito;</li>
+      <li>Usare il Software per scopi illeciti o per agevolare la violazione di diritti di terzi.</li>
+    </ul>
 
-    <h2>9. Foro competente</h2>
-    <p>Per qualunque controversia il foro competente e' Italia, ove non diversamente previsto da norme inderogabili in materia di consumatori.</p>
+    <h2 id="s5">5. Acceptable Use Policy</h2>
+    <div class="warn-box">
+      <p><strong>MusicTools e' uno strumento tecnico di automazione.</strong> Funziona allo stesso modo di un browser o di un registratore audio: e' l'Utente a scegliere quali contenuti acquisire e da quali fonti.</p>
+    </div>
+
+    <h3>5.1 Usi consentiti</h3>
+    <p>L'Utente puo' utilizzare il Software esclusivamente per:</p>
+    <ul>
+      <li>Scaricare, registrare o modificare Contenuti <strong>di cui possiede i diritti</strong> (es. opere proprie, contenuti acquistati legalmente, materiale di pubblico dominio, contenuti rilasciati con licenza permissiva come Creative Commons);</li>
+      <li>Effettuare copie di backup di Contenuti gia' in suo legittimo possesso, nei limiti previsti dalla legge (es. copia privata, art. 71-sexies l.d.a.);</li>
+      <li>Fini di studio, ricerca o uso personale non commerciale, sempre nel rispetto del diritto d'autore.</li>
+    </ul>
+
+    <h3>5.2 Usi vietati</h3>
+    <p>E' espressamente vietato usare il Software per:</p>
+    <ul>
+      <li>Scaricare o registrare Contenuti coperti da copyright senza l'autorizzazione del titolare dei diritti;</li>
+      <li>Aggirare misure tecnologiche di protezione (DRM) imposte sui Contenuti, anche quando il Software permettesse tecnicamente di farlo;</li>
+      <li>Distribuire, rivendere, esibire pubblicamente o monetizzare Contenuti acquisiti tramite il Software;</li>
+      <li>Violare i Termini di servizio delle piattaforme di origine (es. YouTube ToS, Spotify ToS, ecc.);</li>
+      <li>Qualsiasi attivita' che configuri reato o illecito civile secondo la legge italiana o secondo quella della giurisdizione dell'Utente.</li>
+    </ul>
+
+    <h2 id="s6">6. Copyright e responsabilita dell'utente</h2>
+    <p>L'Editore <strong>non possiede, non ospita, non distribuisce alcun contenuto audio o video</strong>. Il Software accede esclusivamente alle risorse pubbliche o private a cui l'Utente decide di puntare.</p>
+    <p>L'<strong>Utente e' l'unico responsabile</strong>:</p>
+    <ul>
+      <li>Della scelta dei Contenuti da scaricare, registrare o modificare;</li>
+      <li>Del rispetto dei diritti d'autore, dei diritti connessi e dei diritti di immagine relativi a tali Contenuti;</li>
+      <li>Del rispetto dei Termini di servizio delle piattaforme di origine;</li>
+      <li>Dell'uso che fa dei Contenuti dopo averli acquisiti tramite il Software.</li>
+    </ul>
+    <p>L'Editore non puo' essere ritenuto responsabile in alcuna forma per l'uso che l'Utente fa del Software o dei Contenuti. Eventuali violazioni del diritto d'autore commesse dall'Utente restano di sua esclusiva responsabilita' civile, penale e amministrativa.</p>
+
+    <h2 id="s7">7. Marchi e affiliazioni con terze parti</h2>
+    <p>I marchi <strong>Spotify</strong>, <strong>YouTube</strong>, <strong>SoundCloud</strong>, <strong>TikTok</strong>, <strong>Instagram</strong>, <strong>Facebook</strong>, <strong>Apple Music</strong> e qualsiasi altro marchio menzionato sono di proprieta' dei rispettivi titolari.</p>
+    <p>MusicTools <strong>non e' affiliato, sponsorizzato, autorizzato, supportato</strong> ne' in alcun modo connesso ad alcuna di queste societa'. Le menzioni di tali marchi nel sito, nella documentazione e nell'interfaccia del Software hanno scopo esclusivamente descrittivo (indicare la compatibilita' tecnica del Software con tali servizi).</p>
+
+    <h2 id="s8">8. Procedura DMCA / segnalazioni</h2>
+    <p>Sebbene l'Editore non distribuisca contenuti, accoglie eventuali segnalazioni ai sensi della normativa internazionale sul copyright (incluso il Digital Millennium Copyright Act statunitense). Le richieste vanno inviate a <a href="mailto:info@djluza.com">info@djluza.com</a> con:</p>
+    <ul>
+      <li>Identificazione del titolare dei diritti e prova della titolarita';</li>
+      <li>Identificazione del materiale ritenuto in violazione;</li>
+      <li>Dichiarazione di buona fede e firma elettronica.</li>
+    </ul>
+
+    <h2 id="s9">9. Esclusione di garanzie</h2>
+    <p>Il Software e' fornito <strong>"COSI' COM'E'" e "COME DISPONIBILE"</strong> ("AS IS" e "AS AVAILABLE"), senza alcuna garanzia espressa o implicita di qualsiasi tipo, ivi incluse, a titolo non esaustivo, le garanzie di:</p>
+    <ul>
+      <li>Idoneita' a uno scopo specifico;</li>
+      <li>Commerciabilita';</li>
+      <li>Non violazione di diritti di terzi;</li>
+      <li>Funzionamento ininterrotto, privo di errori o privo di malware;</li>
+      <li>Compatibilita' con qualsiasi versione corrente o futura di sistemi operativi, piattaforme online o formati di file.</li>
+    </ul>
+    <p>Le piattaforme di origine (Spotify, YouTube, ecc.) possono modificare in qualsiasi momento le proprie API, formati o politiche, rendendo il Software temporaneamente o permanentemente inutilizzabile per certe funzioni. L'Editore non garantisce alcuna continuita' funzionale.</p>
+
+    <h2 id="s10">10. Limitazione di responsabilita</h2>
+    <p>Nei limiti massimi consentiti dalla legge applicabile, in nessun caso l'Editore sara' responsabile verso l'Utente o verso terzi per:</p>
+    <ul>
+      <li>Danni diretti, indiretti, incidentali, speciali, consequenziali, esemplari o punitivi;</li>
+      <li>Perdita di dati, profitti, ricavi, opportunita' commerciali, avviamento, reputazione;</li>
+      <li>Interruzione dell'attivita';</li>
+      <li>Costi di sostituzione di beni o servizi;</li>
+      <li>Pretese o azioni di terzi conseguenti all'uso del Software da parte dell'Utente.</li>
+    </ul>
+    <p>La responsabilita' complessiva dell'Editore, per qualsiasi titolo o causa, e' in ogni caso limitata all'<strong>importo effettivamente corrisposto dall'Utente per la Licenza nei 12 (dodici) mesi precedenti all'evento dannoso</strong>.</p>
+    <p>Le limitazioni sopra riportate non si applicano nei casi di dolo o colpa grave, ne' nei casi in cui la legge applicabile non consenta tale limitazione (es. art. 1229 c.c.).</p>
+
+    <h2 id="s11">11. Manleva (indemnification)</h2>
+    <p>L'Utente si impegna a manlevare, difendere e tenere indenne l'Editore (e i suoi eventuali collaboratori, fornitori, agenti) da qualsiasi pretesa, azione, richiesta di risarcimento, costo, spesa legale, sanzione o danno avanzati da terzi e derivanti da:</p>
+    <ul>
+      <li>L'uso del Software da parte dell'Utente in violazione dei presenti Termini;</li>
+      <li>La violazione, da parte dell'Utente, di diritti d'autore, diritti connessi, diritti di immagine, marchi o altri diritti di terzi nell'acquisizione o nell'uso di Contenuti;</li>
+      <li>La violazione dei Termini di servizio delle piattaforme di origine;</li>
+      <li>Qualsiasi attivita' illecita compiuta dall'Utente tramite il Software.</li>
+    </ul>
+
+    <h2 id="s12">12. Pagamenti e fatturazione</h2>
+    <p>I pagamenti sono gestiti da <strong>Lemon Squeezy Inc.</strong>, che opera come Merchant of Record (MoR). Lemon Squeezy emette la ricevuta/fattura fiscale, gestisce l'IVA secondo la giurisdizione del cliente (regime MOSS UE) e fornisce assistenza per problematiche di pagamento.</p>
+    <p>Prezzo pubblicato: <strong>39,90 € una tantum</strong> (IVA inclusa secondo paese di residenza dell'Utente).</p>
+
+    <h2 id="s13">13. Diritto di recesso e rimborsi</h2>
+    <p>Ai sensi del Codice del Consumo (D.lgs. 206/2005) e del Regolamento UE sui consumatori, l'Utente ha diritto di recedere dal contratto entro <strong>14 (quattordici) giorni</strong> dall'acquisto, senza fornire motivazioni.</p>
+    <p>La richiesta va inviata a <a href="mailto:info@djluza.com">info@djluza.com</a> dall'email usata per l'acquisto. Il rimborso viene processato da Lemon Squeezy sullo stesso metodo di pagamento; tempi tipici 5-10 giorni lavorativi.</p>
+    <p>A seguito del rimborso, la Licenza viene revocata e il Software smettera' di funzionare al successivo controllo online.</p>
+
+    <h2 id="s14">14. Aggiornamenti e supporto</h2>
+    <p>L'Editore si impegna a mantenere il Software funzionante e a rilasciare aggiornamenti gratuiti per tutta la durata commerciale del prodotto. Non e' garantito un calendario specifico di rilascio.</p>
+    <p>Il supporto e' fornito via email a <a href="mailto:info@djluza.com">info@djluza.com</a>, con risposta entro tempi ragionevoli e in lingua italiana o inglese.</p>
+
+    <h2 id="s15">15. Risoluzione</h2>
+    <p>L'Editore puo' risolvere immediatamente la Licenza, senza preavviso e senza obbligo di rimborso, qualora l'Utente:</p>
+    <ul>
+      <li>Violi una qualsiasi disposizione dei presenti Termini;</li>
+      <li>Usi il Software per attivita' illecite o per violare diritti di terzi;</li>
+      <li>Tenti di aggirare i meccanismi di attivazione o condivida la propria chiave;</li>
+      <li>Inoltri un chargeback non giustificato successivamente al periodo di recesso.</li>
+    </ul>
+    <p>A seguito della risoluzione, l'Utente deve cessare l'uso del Software e disinstallarlo. Le disposizioni di cui ai §6, §9, §10, §11 sopravvivono alla risoluzione.</p>
+
+    <h2 id="s16">16. Modifiche ai termini</h2>
+    <p>L'Editore puo' aggiornare i presenti Termini in qualsiasi momento per ragioni tecniche, normative o operative. La versione vigente e' sempre consultabile a questa URL. Per modifiche sostanziali sara' inviata notifica via email agli Utenti registrati con almeno 30 giorni di preavviso.</p>
+
+    <h2 id="s17">17. Legge applicabile e foro competente</h2>
+    <p>I presenti Termini sono regolati dalla legge italiana. Per qualunque controversia il foro competente e' quello del luogo di residenza dell'Utente consumatore, ove inderogabile per legge; in caso contrario, foro esclusivo di Pescara, Italia.</p>
+    <p>Resta salva la possibilita' per l'Utente consumatore residente nell'Unione Europea di rivolgersi alla piattaforma ODR della Commissione Europea: <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noopener">ec.europa.eu/consumers/odr</a>.</p>
+
+    <h2 id="s18">18. Contatti</h2>
+    <p>Per qualsiasi richiesta relativa ai presenti Termini scrivere a <a href="mailto:info@djluza.com">info@djluza.com</a>.</p>
+
+    <p style="margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--border); color: var(--text-dim); font-size: 13px;">
+      <strong>Disclaimer.</strong> Il presente documento e' un modello orientativo. L'Editore raccomanda all'Utente professionale di consultare un legale qualificato per verificare la conformita' a normative specifiche del proprio settore o paese.
+    </p>
   </main>
 </body>
 </html>
