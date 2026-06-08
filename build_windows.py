@@ -99,14 +99,17 @@ def run_pyinstaller():
         if f.is_file() and f.suffix in (".exe", ""):
             add_binaries.extend(["--add-binary", f"{f};."])
 
+    icon_path = ROOT / "assets" / "icon.ico"
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "MusicTools",
         "--windowed",
         "--onedir",
         "--noconfirm",
-        # Icona (se presente)
-        # "--icon", str(ROOT / "icon.ico"),
+    ]
+    if icon_path.exists():
+        cmd.extend(["--icon", str(icon_path)])
+    cmd.extend([
         # Web UI assets (HTML/CSS/JS) — usati da pywebview
         "--add-data", f"{ROOT / 'webui'};webui",
         # Hidden imports per pywebview (EdgeChromium su Windows)
@@ -121,7 +124,7 @@ def run_pyinstaller():
         *add_binaries,
         # Entry point
         str(ROOT / "main.py"),
-    ]
+    ])
 
     log(f"Comando: {' '.join(cmd[:10])}...")
     subprocess.run(cmd, check=True, cwd=str(ROOT))

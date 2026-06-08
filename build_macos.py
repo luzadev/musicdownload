@@ -208,12 +208,17 @@ def run_pyinstaller():
             if f.is_file():
                 add_binaries.extend(["--add-binary", f"{f}:lib"])
 
+    icon_path = ROOT / "assets" / "icon.icns"
     cmd = [
         sys.executable, "-m", "PyInstaller",
         "--name", "MusicTools",
         "--windowed",
         "--onedir",
         "--noconfirm",
+    ]
+    if icon_path.exists():
+        cmd.extend(["--icon", str(icon_path)])
+    cmd.extend([
         # Web UI assets (HTML/CSS/JS) — usati da pywebview
         "--add-data", f"{ROOT / 'webui'}:webui",
         # Hidden imports per pywebview (WebKit su macOS)
@@ -225,7 +230,7 @@ def run_pyinstaller():
         *add_binaries,
         # Entry point
         str(ROOT / "main.py"),
-    ]
+    ])
 
     log(f"Comando: {' '.join(cmd[:10])}...")
     subprocess.run(cmd, check=True, cwd=str(ROOT))
