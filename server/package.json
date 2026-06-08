@@ -1,19 +1,21 @@
 {
-  "name": "musictools-license-server",
-  "version": "0.1.0",
+  "name": "musictools-api",
+  "version": "1.0.0",
   "private": true,
-  "description": "License + update API for MusicTools (Cloudflare Workers + D1)",
+  "type": "module",
+  "description": "License + update API per MusicTools (Node.js + Express + MariaDB)",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "db:create": "wrangler d1 create musictools-licenses",
-    "db:migrate:local": "wrangler d1 migrations apply musictools-licenses --local",
-    "db:migrate:prod": "wrangler d1 migrations apply musictools-licenses --remote",
-    "tail": "wrangler tail"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/migrate.js"
   },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20251101.0",
-    "typescript": "^5.6.0",
-    "wrangler": "^3.95.0"
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "express": "^4.21.0",
+    "mysql2": "^3.11.0"
   }
 }
