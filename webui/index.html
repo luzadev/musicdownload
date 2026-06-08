@@ -75,14 +75,21 @@
         <div class="card">
           <div class="field">
             <label class="field-label">
-              URL
+              URL o titolo brano
               <span class="badge" id="urlListBadge" hidden></span>
             </label>
             <div class="row">
-              <input type="text" id="urlInput" class="input pill" placeholder="Incolla qui un link Spotify, YouTube o SoundCloud…" />
+              <input type="text" id="urlInput" class="input pill" placeholder="Link Spotify/YouTube…  oppure  Artista - Titolo  ·  Titolo brano" />
               <button class="btn btn-ghost pill" id="loadListBtn">
                 <span>📂</span> Carica lista
               </button>
+            </div>
+            <div class="hint">
+              <span class="hint-ico">ⓘ</span>
+              <div>
+                Puoi incollare un <strong>link</strong> (Spotify, YouTube, SoundCloud…) oppure scrivere direttamente
+                <strong>Artista - Titolo</strong> o solo il <strong>titolo del brano</strong>: l'app cerca il match migliore su YouTube e scarica in MP3.
+              </div>
             </div>
           </div>
 

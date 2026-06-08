@@ -146,8 +146,10 @@ def download_playlist(
                 progress_callback(i, total, "", "stopped", 0)
             return
 
-        query = f"{track['name']} - {track['artist']}"
-        track_only = track['name']
+        artist = (track.get('artist') or "").strip()
+        name = (track.get('name') or "").strip()
+        query = f"{name} - {artist}" if artist else name
+        track_only = name
 
         # Salta brani gia scaricati in precedenza (file di tracking)
         if query in done_set:

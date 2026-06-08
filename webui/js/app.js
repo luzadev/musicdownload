@@ -27,6 +27,24 @@ function waitApi() {
   });
 }
 
+// Riconosce se una stringa e un URL (incluso schema spotify:)
+function looksLikeUrl(s) {
+  if (!s) return false;
+  if (/^(https?|spotify):/i.test(s)) return true;
+  if (s.includes("://")) return true;
+  // Domini comuni anche senza http (es. "youtube.com/...")
+  return /^(www\.)?(youtube\.com|youtu\.be|spotify\.com|soundcloud\.com|tiktok\.com|instagram\.com|facebook\.com|fb\.watch)\//i.test(s);
+}
+
+// Trasforma una query libera in {name, artist}.
+// Formati riconosciuti: "Artista - Titolo" (anche con – o —) oppure solo "Titolo".
+function parseQueryToTrack(q) {
+  const s = (q || "").trim();
+  const m = s.match(/^(.+?)\s+[-–—]\s+(.+)$/);
+  if (m) return { artist: m[1].trim(), name: m[2].trim() };
+  return { artist: "", name: s };
+}
+
 // ============================================================
 // Bridge — eventi spinti dal backend
 // ============================================================
@@ -340,11 +358,25 @@ $("#downloadBtn").addEventListener("click", async () => {
     if (!urls.length) {
       const single = $("#urlInput").value.trim();
       if (!single) {
-        toast("Inserisci un URL o carica una lista", "error");
+        toast("Inserisci un URL, un titolo o carica una lista", "error");
         bridgeHandlers["download:done"]();
         return;
       }
-      urls = [single];
+      if (looksLikeUrl(single)) {
+        urls = [single];
+      } else {
+        const track = parseQueryToTrack(single);
+        res = await window.pywebview.api.start_tracks_download({
+          tracks: [track],
+          output_dir: state.dlOutputDir,
+          subfolder: "",
+        });
+        if (!res.ok) {
+          toast(res.error || "Errore", "error");
+          bridgeHandlers["download:done"]();
+        }
+        return;
+      }
     }
     res = await window.pywebview.api.start_download({
       urls,
