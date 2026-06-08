@@ -8,25 +8,9 @@
   if (el) el.textContent = String(new Date().getFullYear());
 })();
 
-// Lemon Squeezy overlay
-// Lo script di Lemon (lemon.js) intercetta automaticamente i link con
-// data-lemonsqueezy-url e apre l'overlay. Qui ci limitiamo a impedire
-// che il click navighi via se l'URL non e' ancora stato configurato.
-document.querySelectorAll("[data-lemonsqueezy-url]").forEach((el) => {
-  el.addEventListener("click", (e) => {
-    const url = el.getAttribute("data-lemonsqueezy-url");
-    if (!url || url === "REPLACE_WITH_LS_PRODUCT_URL") {
-      e.preventDefault();
-      alert(
-        "Il prodotto Lemon Squeezy non e' ancora configurato.\n" +
-        "Crea il prodotto su Lemon Squeezy e incolla l'URL dentro " +
-        "landing/index.html in data-lemonsqueezy-url."
-      );
-    }
-    // Se la pagina e' aperta via file:// lemon.js non riesce a inizializzare:
-    // in quel caso lasciamo che il link navighi via.
-  });
-});
+// Lemon Squeezy overlay: lemon.js intercetta automaticamente i link con
+// data-lemonsqueezy-url e apre l'overlay di checkout. Niente codice nostro
+// necessario qui — basta che lemon.js sia caricato (vedi <script> in index.html).
 
 // Header che diventa piu' opaco mentre scorri (effetto subtle)
 const nav = document.querySelector(".nav");

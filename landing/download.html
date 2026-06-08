@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Scarica MusicTools</title>
+  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="stylesheet" href="css/style.css" />
+  <style>
+    .dl-page {
+      padding: 60px 24px 100px;
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    .dl-head {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .dl-head h1 {
+      font-size: clamp(28px, 4vw, 42px);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      margin: 12px 0 10px;
+    }
+    .dl-head p {
+      color: var(--text-muted);
+      font-size: 17px;
+      margin: 0;
+    }
+
+    .dl-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px;
+      margin-bottom: 40px;
+    }
+    @media (max-width: 700px) {
+      .dl-grid { grid-template-columns: 1fr; }
+    }
+
+    .dl-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 32px 28px;
+      text-align: center;
+      transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.25s ease;
+    }
+    .dl-card:hover {
+      transform: translateY(-3px);
+      border-color: #383838;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.4);
+    }
+    .dl-os { font-size: 64px; line-height: 1; margin-bottom: 12px; }
+    .dl-card h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
+    .dl-card .meta { color: var(--text-dim); font-size: 13px; margin: 0 0 24px; }
+
+    .dl-form {
+      max-width: 460px;
+      margin: 0 auto 32px;
+      padding: 28px 30px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+    }
+    .dl-form h2 {
+      margin: 0 0 6px;
+      font-size: 18px;
+      font-weight: 800;
+    }
+    .dl-form p { margin: 0 0 18px; color: var(--text-muted); font-size: 14px; }
+    .dl-form .field { margin-bottom: 12px; }
+    .dl-form .field-label { font-size: 12px; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 6px; }
+    .dl-form .input { width: 100%; padding: 12px 16px; border-radius: 999px; background: #0d0d0d; border: 1px solid var(--border); color: var(--text); font-size: 14px; font-family: inherit; box-sizing: border-box; }
+    .dl-form .input:focus { outline: none; border-color: var(--accent); }
+    .dl-form .submit { width: 100%; margin-top: 12px; }
+
+    .dl-steps {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 28px 32px;
+      margin-bottom: 18px;
+    }
+    .dl-steps h2 { font-size: 18px; font-weight: 800; margin: 0 0 14px; }
+    .dl-steps ol { margin: 0; padding-left: 22px; color: var(--text-muted); font-size: 14.5px; line-height: 1.7; }
+    .dl-steps li { margin-bottom: 4px; }
+    .dl-steps strong { color: var(--text); }
+    .dl-steps code { background: var(--bg-card-2); padding: 2px 7px; border-radius: 5px; font-size: 13px; font-family: ui-monospace, monospace; color: var(--accent); }
+
+    .dl-support { text-align: center; color: var(--text-muted); font-size: 14px; padding-top: 24px; border-top: 1px solid var(--divider); margin-top: 24px; }
+    .dl-support a { color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <header class="nav">
+    <div class="container nav-row">
+      <a href="/" class="brand">
+        <span class="brand-logo">♫</span>
+        <span class="brand-name">MusicTools</span>
+      </a>
+      <nav class="nav-links">
+        <a href="/">Home</a>
+        <a href="/#features">Funzioni</a>
+        <a href="/#faq">FAQ</a>
+      </nav>
+      <a href="mailto:info@djluza.com" class="btn btn-ghost btn-sm">Supporto</a>
+    </div>
+  </header>
+
+  <main class="dl-page">
+    <div class="dl-head">
+      <span class="eyebrow">SCARICA</span>
+      <h1>Scarica MusicTools</h1>
+      <p>Scegli il sistema operativo e procedi con l'installazione</p>
+    </div>
+
+    <!-- Form mostrato quando NON arrivi dall'email (no key/email in URL) -->
+    <div class="dl-form" id="dlForm">
+      <h2>Inserisci le tue credenziali</h2>
+      <p>Hai gia' acquistato? Inserisci l'email e la chiave per scaricare.</p>
+      <div class="field">
+        <label class="field-label" for="dlEmail">Email dell'acquisto</label>
+        <input type="email" id="dlEmail" class="input" autocomplete="email" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="dlKey">Chiave di licenza</label>
+        <input type="text" id="dlKey" class="input" autocomplete="off" placeholder="XXXX-XXXX-XXXX-XXXX" />
+      </div>
+      <button class="btn btn-primary btn-lg submit" id="dlSubmitBtn">Mostra i link di download</button>
+    </div>
+
+    <!-- Cards di download (popolate dopo inserimento credenziali o da URL) -->
+    <div class="dl-grid" id="dlGrid" hidden>
+      <article class="dl-card">
+        <div class="dl-os">🍎</div>
+        <h2>macOS</h2>
+        <p class="meta">macOS 11 Big Sur o successivi · Apple Silicon e Intel</p>
+        <a class="btn btn-primary btn-lg btn-block" id="dlMacBtn" target="_blank" rel="noopener">
+          Scarica per Mac
+        </a>
+      </article>
+
+      <article class="dl-card">
+        <div class="dl-os">🪟</div>
+        <h2>Windows</h2>
+        <p class="meta">Windows 10 e 11 · 64-bit</p>
+        <a class="btn btn-primary btn-lg btn-block" id="dlWinBtn" target="_blank" rel="noopener">
+          Scarica per Windows
+        </a>
+      </article>
+    </div>
+
+    <div class="dl-steps">
+      <h2>Installazione macOS</h2>
+      <ol>
+        <li>Apri il file <code>.zip</code> scaricato — viene estratto in <code>MusicTools.app</code></li>
+        <li>Trascina <strong>MusicTools.app</strong> nella cartella <strong>Applicazioni</strong></li>
+        <li>Vai in Applicazioni, <strong>tasto destro</strong> su MusicTools → <strong>Apri</strong> → <strong>Apri</strong> (solo la prima volta, e' la procedura standard per app non firmate)</li>
+        <li>Inserisci email e chiave per attivare</li>
+      </ol>
+    </div>
+
+    <div class="dl-steps">
+      <h2>Installazione Windows</h2>
+      <ol>
+        <li>Estrai il file <code>.zip</code> in una cartella di tua scelta</li>
+        <li>Doppio click su <strong>MusicTools.exe</strong></li>
+        <li>Se Windows mostra "Windows ha protetto il PC": click su <strong>Ulteriori informazioni</strong> → <strong>Esegui comunque</strong></li>
+        <li>Inserisci email e chiave per attivare</li>
+      </ol>
+    </div>
+
+    <div class="dl-support">
+      Problemi con l'installazione o non hai ricevuto l'email con la chiave?<br>
+      Scrivi a <a href="mailto:info@djluza.com">info@djluza.com</a> — risposta entro 24 ore.
+    </div>
+  </main>
+
+  <script>
+    function getParam(name) {
+      const url = new URL(window.location.href);
+      return url.searchParams.get(name) || "";
+    }
+
+    function setDownloadLinks(email, key) {
+      const q = "key=" + encodeURIComponent(key) + "&email=" + encodeURIComponent(email);
+      document.getElementById("dlMacBtn").href = "/api/download/macos?" + q;
+      document.getElementById("dlWinBtn").href = "/api/download/windows?" + q;
+      document.getElementById("dlGrid").hidden = false;
+      document.getElementById("dlForm").hidden = true;
+    }
+
+    // Se arrivi dall'email con ?key=&email= mostra subito i bottoni
+    const urlKey = getParam("key");
+    const urlEmail = getParam("email");
+    if (urlKey && urlEmail) {
+      setDownloadLinks(urlEmail, urlKey);
+    }
+
+    // Form submit
+    document.getElementById("dlSubmitBtn").addEventListener("click", () => {
+      const email = document.getElementById("dlEmail").value.trim();
+      const key = document.getElementById("dlKey").value.trim();
+      if (!email || !key) {
+        alert("Inserisci email e chiave di licenza.");
+        return;
+      }
+      setDownloadLinks(email, key);
+    });
+
+    // Enter dentro i campi
+    ["dlEmail", "dlKey"].forEach(id => {
+      document.getElementById(id).addEventListener("keydown", (e) => {
+        if (e.key === "Enter") document.getElementById("dlSubmitBtn").click();
+      });
+    });
+  </script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import express from "express";
 import * as license from "./license.js";
 import * as updates from "./updates.js";
 import * as ls from "./lemonsqueezy.js";
+import * as dl from "./downloads.js";
 
 const app = express();
 
@@ -44,6 +45,9 @@ app.post("/api/license/deactivate", license.deactivate);
 // Aggiornamenti + download firmato
 app.get("/api/latest",   updates.latest);
 app.get("/api/download", updates.download);
+
+// 1-click download dall'email (key+email come query -> redirect signed)
+app.get("/api/download/:platform", dl.downloadByKey);
 
 // 404 JSON solo per /api/*
 app.use("/api", (_req, res) => res.status(404).json({ error: "Not found" }));
