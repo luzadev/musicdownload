@@ -1,0 +1,42 @@
+name = "musictools-api"
+main = "src/worker.ts"
+compatibility_date = "2026-01-01"
+
+# Routes: musictools.djluza.com/api/* va a questo worker.
+# Configurare nel dashboard Cloudflare DNS + Workers Routes
+# oppure decommentare se zona gia mappata:
+# routes = [
+#   { pattern = "musictools.djluza.com/api/*", zone_name = "djluza.com" }
+# ]
+
+# D1 database (sqlite gestito da Cloudflare).
+# Crealo una volta con: npm run db:create
+# Poi sostituisci database_id qui sotto con quello restituito.
+[[d1_databases]]
+binding = "DB"
+database_name = "musictools-licenses"
+database_id = "REPLACE_AFTER_db:create"
+
+# R2 bucket dove conservi gli zip macOS/Windows.
+# Cli: wrangler r2 bucket create musictools-builds
+[[r2_buckets]]
+binding = "BUILDS"
+bucket_name = "musictools-builds"
+
+# KV per rate-limiting (opzionale ma consigliato).
+# Cli: wrangler kv:namespace create RATELIMIT
+# [[kv_namespaces]]
+# binding = "RATELIMIT"
+# id = "REPLACE_ME"
+
+# Variabili NON segrete.
+[vars]
+LATEST_VERSION = "v1.5.2"
+MAX_ACTIVATIONS = "3"
+TOKEN_TTL_DAYS = "30"
+DOWNLOAD_URL_TTL_SECONDS = "300"
+
+# Secrets (impostarli da CLI, NON in chiaro qui):
+# wrangler secret put JWT_SECRET        # HMAC key per i token offline
+# wrangler secret put LEMONSQUEEZY_SIGNING_SECRET  # verifica webhook
+# wrangler secret put RESEND_API_KEY    # invio email license-key

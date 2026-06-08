@@ -11,6 +11,17 @@ VERSION = "v1.5.2"
 APP_NAME = "MusicTools"
 _LEGACY_NAME = "MusicDownload"
 
+# Endpoint dell'API di licenza/aggiornamenti. Cambialo qui per puntare
+# a un ambiente di staging.
+LICENSE_API_URL = "https://musictools.djluza.com"
+
+# Quanti giorni puo' restare l'app offline prima di richiedere una
+# nuova validazione contro il server.
+LICENSE_GRACE_DAYS = 14
+
+# Ogni quanti giorni l'app rivalida la licenza in background quando online.
+LICENSE_REVALIDATE_DAYS = 7
+
 
 def _get_config_dir() -> Path:
     """Ritorna la directory per config.json.
@@ -59,6 +70,13 @@ DEFAULTS = {
     "cookies_path": str(_project_dir / "cookies.txt"),
     "output_dir": str(_project_dir / "MUSICA"),
     "theme": "dark",
+    # ---- Licenza ----
+    "license_key": "",          # chiave fornita all'utente via email
+    "license_email": "",        # email associata all'acquisto
+    "license_token": "",        # JWT firmato dal server (claims offline)
+    "license_activated_at": 0,  # epoch della prima attivazione
+    "last_validated_at": 0,     # epoch dell'ultima revalidate online riuscita
+    "device_id": "",            # UUID generato al primo avvio
 }
 
 

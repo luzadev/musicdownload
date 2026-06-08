@@ -43,3 +43,9 @@ PlayList_da_scaricare.txt
 
 # Asset intermedi rigenerabili (vedi assets/generate_icon.py)
 assets/icon.iconset/
+
+# Backend (server/) build artifacts e secrets
+server/node_modules/
+server/.wrangler/
+server/.dev.vars
+server/dist/

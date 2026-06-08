@@ -10,7 +10,8 @@ import time
 import webbrowser
 from typing import Any, Optional
 
-from core.config import load_config, save_config, VERSION
+from core.config import load_config, save_config, VERSION, LICENSE_API_URL
+from core import license as license_mod
 from core.downloader import (
     download_playlist,
     download_direct_url,
@@ -113,10 +114,15 @@ class Api:
     def get_init_data(self) -> dict:
         """Chiamato dal frontend all'avvio per popolare lo stato iniziale."""
         cfg = load_config()
+        # Non spediamo il token raw al frontend (e' sensibile e non serve in UI)
+        safe_cfg = {k: v for k, v in cfg.items() if k != "license_token"}
+        license_status = license_mod.get_status(cfg)
         return {
             "version": VERSION,
-            "config": cfg,
+            "config": safe_cfg,
             "spotify_guide": SPOTIFY_GUIDE_TEXT,
+            "license": license_status,
+            "purchase_url": "https://musictools.djluza.com",
         }
 
     # ------------------------------------------------------------------
@@ -128,7 +134,10 @@ class Api:
         except (TypeError, ValueError):
             threshold = 310
 
-        config = {
+        # Merge sul config esistente per preservare i campi licenza
+        # (license_key/token/email/...), device_id, ecc.
+        config = load_config()
+        config.update({
             "client_id": (payload.get("client_id") or "").strip(),
             "client_secret": (payload.get("client_secret") or "").strip(),
             "bitrate": payload.get("bitrate", "320K"),
@@ -136,40 +145,73 @@ class Api:
             "cookies_path": (payload.get("cookies_path") or "").strip(),
             "output_dir": (payload.get("output_dir") or "").strip(),
             "theme": payload.get("theme", "dark"),
-        }
+        })
         save_config(config)
         return {"ok": True}
 
-    def check_update(self) -> dict:
-        """Controlla aggiornamenti interrogando l'API GitHub Releases."""
-        import platform
-        import requests
+    # ------------------------------------------------------------------
+    # Licenza
+    # ------------------------------------------------------------------
+    def get_license_status(self) -> dict:
+        return license_mod.get_status()
 
-        API_URL = "https://api.github.com/repos/luzadev/musicdownload/releases/latest"
+    def activate_license(self, payload: dict) -> dict:
         try:
-            resp = requests.get(API_URL, headers={
-                "User-Agent": "MusicTools",
-                "Accept": "application/vnd.github+json",
-            }, timeout=10)
-            resp.raise_for_status()
-            data = resp.json()
+            status = license_mod.activate(
+                payload.get("key") or "",
+                payload.get("email") or "",
+            )
+            return {"ok": True, "license": status}
+        except license_mod.LicenseNetworkError as e:
+            return {"ok": False, "error": f"Impossibile contattare il server: {e}"}
+        except license_mod.LicenseError as e:
+            return {"ok": False, "error": str(e)}
 
-            remote = data.get("tag_name", "")
-            notes = data.get("body", "") or ""
-            html_url = data.get("html_url", "")
+    def deactivate_license(self) -> dict:
+        status = license_mod.deactivate(release_remote=True)
+        return {"ok": True, "license": status}
 
-            # Trova l'asset giusto per la piattaforma
-            assets = data.get("assets", []) or []
-            is_macos = platform.system() == "Darwin"
-            keyword = "macos" if is_macos else "windows"
-            download_url = ""
-            for a in assets:
-                name = (a.get("name") or "").lower()
-                if keyword in name and name.endswith(".zip"):
-                    download_url = a.get("browser_download_url", "")
-                    break
-            if not download_url:
-                download_url = html_url  # fallback: pagina release
+    def revalidate_license(self) -> dict:
+        """Revalidate in foreground (chiamabile dalla UI 'Verifica ora')."""
+        status = license_mod.validate()
+        return {"ok": True, "license": status}
+
+    def open_purchase_page(self) -> dict:
+        webbrowser.open("https://musictools.djluza.com")
+        return {"ok": True}
+
+    def check_update(self) -> dict:
+        """Controlla aggiornamenti interrogando l'API djluza.com.
+
+        Il server identifica la piattaforma e restituisce un URL di
+        download firmato a tempo. Senza un token di licenza valido
+        ritorna comunque la versione corrente ma con download_url vuoto.
+        """
+        import platform
+        import urllib.error
+        import urllib.request
+
+        cfg = load_config()
+        token = (cfg.get("license_token") or "").strip()
+        is_macos = platform.system() == "Darwin"
+        plat = "macos" if is_macos else "windows"
+
+        url = f"{LICENSE_API_URL.rstrip('/')}/api/latest?platform={plat}&current={VERSION}"
+        headers = {
+            "User-Agent": f"MusicTools/{VERSION}",
+            "Accept": "application/json",
+        }
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+
+        req = urllib.request.Request(url, headers=headers, method="GET")
+        try:
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+
+            remote = data.get("version", "")
+            notes = data.get("notes", "") or ""
+            download_url = data.get("download_url", "") or ""
 
             return {
                 "ok": True,
@@ -177,8 +219,13 @@ class Api:
                 "remote": remote,
                 "is_new": bool(remote and remote != VERSION),
                 "download_url": download_url,
-                "notes": notes[:500] if notes else "",  # tronca per UI
+                "notes": notes[:500] if notes else "",
+                "requires_license": not bool(download_url) and not token,
             }
+        except urllib.error.HTTPError as e:
+            return {"ok": False, "error": f"HTTP {e.code}: {e.reason}", "current": VERSION}
+        except (urllib.error.URLError, TimeoutError, OSError) as e:
+            return {"ok": False, "error": f"Connessione fallita: {e}", "current": VERSION}
         except Exception as e:
             return {"ok": False, "error": str(e), "current": VERSION}
 

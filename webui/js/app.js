@@ -7,6 +7,8 @@ const $$ = (sel) => Array.from(document.querySelectorAll(sel));
 
 const state = {
   config: {},
+  license: { licensed: false },
+  purchaseUrl: "https://musictools.djluza.com",
   loaded: null,  // { kind: "urls"|"tracks", urls?, tracks?, count }
   dlOutputDir: "",
   upDir: "",
@@ -43,6 +45,90 @@ function parseQueryToTrack(q) {
   const m = s.match(/^(.+?)\s+[-–—]\s+(.+)$/);
   if (m) return { artist: m[1].trim(), name: m[2].trim() };
   return { artist: "", name: s };
+}
+
+// ============================================================
+// Licenza: gating della UI principale
+// ============================================================
+function applyLicenseGate() {
+  const lic = state.license || { licensed: false };
+  const screen = $("#activateScreen");
+  const appEl = document.querySelector(".app");
+  if (!lic.licensed) {
+    if (screen) screen.hidden = false;
+    if (appEl) appEl.style.display = "none";
+  } else {
+    if (screen) screen.hidden = true;
+    if (appEl) appEl.style.display = "";
+  }
+}
+
+function fmtDate(epoch) {
+  if (!epoch) return "—";
+  try {
+    return new Date(epoch * 1000).toLocaleDateString("it-IT", {
+      day: "2-digit", month: "short", year: "numeric"
+    });
+  } catch (_e) { return "—"; }
+}
+
+function renderLicenseStatus() {
+  const lic = state.license || {};
+  const box = $("#licenseStatusBox");
+  if (!box) return;  // panel non ancora montato
+  if (!lic.licensed) {
+    box.innerHTML = `<div class="lic-warn">Licenza non attiva</div>`;
+    return;
+  }
+  box.innerHTML = `
+    <div class="lic-row"><span>Email</span><strong>${lic.email || "—"}</strong></div>
+    <div class="lic-row"><span>Chiave</span><strong>${lic.key || "—"}</strong></div>
+    <div class="lic-row"><span>Attivata il</span><strong>${fmtDate(lic.activated_at)}</strong></div>
+    <div class="lic-row"><span>Ultima verifica</span><strong>${fmtDate(lic.last_validated_at)}</strong></div>
+  `;
+}
+
+async function activateLicense() {
+  const email = $("#actEmail").value.trim();
+  const key = $("#actKey").value.trim();
+  const err = $("#actError");
+  err.hidden = true;
+  err.textContent = "";
+  if (!email || !key) {
+    err.textContent = "Inserisci email e chiave di licenza.";
+    err.hidden = false;
+    return;
+  }
+  const btn = $("#actActivateBtn");
+  btn.disabled = true;
+  const oldText = btn.innerHTML;
+  btn.innerHTML = "Attivazione in corso…";
+  try {
+    const res = await window.pywebview.api.activate_license({ email, key });
+    if (res.ok) {
+      state.license = res.license;
+      applyLicenseGate();
+      renderLicenseStatus();
+      toast("Licenza attivata. Benvenuto!", "success");
+    } else {
+      err.textContent = res.error || "Errore di attivazione.";
+      err.hidden = false;
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = oldText;
+  }
+}
+
+async function deactivateLicense() {
+  if (!confirm("Disattivare la licenza su questo dispositivo?")) return;
+  const res = await window.pywebview.api.deactivate_license();
+  if (res.ok) {
+    state.license = res.license;
+    applyLicenseGate();
+    renderLicenseStatus();
+    toast("Licenza disattivata", "info");
+  }
 }
 
 // ============================================================
@@ -234,9 +320,14 @@ async function init() {
   await waitApi();
   const data = await window.pywebview.api.get_init_data();
   state.config = data.config || {};
+  state.license = data.license || { licensed: false };
+  state.purchaseUrl = data.purchase_url || "https://musictools.djluza.com";
   $("#footerVersion").textContent = data.version;
   $("#currentVersionLabel").textContent = data.version;
   $("#guideBody").textContent = data.spotify_guide;
+
+  applyLicenseGate();
+  renderLicenseStatus();
 
   // Populate Settings fields
   $("#clientIdInput").value = state.config.client_id || "";
@@ -852,6 +943,42 @@ $("#checkUpdateBtn").addEventListener("click", async () => {
   } else {
     status.className = "update-status ok";
     status.textContent = "✓ Sei aggiornato!";
+  }
+});
+
+// ============================================================
+// Licenza: listener dello schermo di attivazione + impostazioni
+// ============================================================
+$("#actActivateBtn")?.addEventListener("click", activateLicense);
+$("#actBuyBtn")?.addEventListener("click", async () => {
+  await window.pywebview.api.open_purchase_page();
+});
+$("#actKey")?.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") activateLicense();
+});
+
+$("#deactivateLicenseBtn")?.addEventListener("click", deactivateLicense);
+
+$("#revalidateLicenseBtn")?.addEventListener("click", async () => {
+  const btn = $("#revalidateLicenseBtn");
+  btn.disabled = true;
+  const old = btn.textContent;
+  btn.textContent = "Verifica in corso…";
+  try {
+    const res = await window.pywebview.api.revalidate_license();
+    if (res.ok) {
+      state.license = res.license;
+      renderLicenseStatus();
+      if (res.license.licensed) {
+        toast("Licenza verificata", "success");
+      } else {
+        applyLicenseGate();
+        toast("Licenza non piu valida", "error");
+      }
+    }
+  } finally {
+    btn.disabled = false;
+    btn.textContent = old;
   }
 });
 

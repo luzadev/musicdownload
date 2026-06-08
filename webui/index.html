@@ -520,6 +520,22 @@
           </div>
         </div>
 
+        <h2 class="section-label">Licenza</h2>
+        <div class="card">
+          <div class="license-box" id="licenseStatusBox"></div>
+          <div class="license-actions">
+            <button class="btn btn-ghost pill" id="revalidateLicenseBtn">Verifica ora</button>
+            <button class="btn btn-danger pill" id="deactivateLicenseBtn">Disattiva su questo device</button>
+          </div>
+          <div class="hint">
+            <span class="hint-ico">ⓘ</span>
+            <div>
+              Disattivando liberi uno slot di attivazione, utile se sposti l'app su un altro Mac/PC.
+              Puoi riattivare in qualsiasi momento con la stessa email e chiave.
+            </div>
+          </div>
+        </div>
+
         <h2 class="section-label">Aggiornamenti</h2>
         <div class="card">
           <div class="row spread">
@@ -811,6 +827,44 @@
       </section>
 
     </main>
+  </div>
+
+  <!-- ============== SCHERMATA ATTIVAZIONE LICENZA ============== -->
+  <div class="activate-screen" id="activateScreen" hidden>
+    <div class="activate-card">
+      <div class="activate-logo">♫</div>
+      <h1 class="activate-title">Benvenuto in MusicTools</h1>
+      <p class="activate-sub">
+        Inserisci la tua licenza per iniziare. Se non ne hai ancora una,
+        acquistala dal nostro sito ed entra in pochi secondi.
+      </p>
+
+      <div class="activate-form">
+        <div class="field">
+          <label class="field-label">Email dell'acquisto</label>
+          <input type="email" id="actEmail" class="input pill" placeholder="tu@esempio.com" autocomplete="email" />
+        </div>
+        <div class="field">
+          <label class="field-label">Chiave di licenza</label>
+          <input type="text" id="actKey" class="input pill" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" />
+        </div>
+
+        <div class="activate-error" id="actError" hidden></div>
+
+        <div class="activate-actions">
+          <button class="btn btn-primary pill btn-lg" id="actActivateBtn">
+            <span class="ico">🔓</span> Attiva
+          </button>
+          <button class="btn btn-ghost pill btn-lg" id="actBuyBtn">
+            Compra una licenza
+          </button>
+        </div>
+      </div>
+
+      <div class="activate-foot">
+        Hai problemi? Scrivici a <a href="mailto:info@djluza.com">info@djluza.com</a>
+      </div>
+    </div>
   </div>
 
   <!-- ============== MODAL: Spotify Guide ============== -->
