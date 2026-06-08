@@ -13,9 +13,10 @@ from mutagen.id3 import (
 )
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.flac import FLAC, Picture
+from mutagen.wave import WAVE
 
 
-SUPPORTED_EXTS = (".mp3", ".m4a", ".mp4", ".aac", ".flac")
+SUPPORTED_EXTS = (".mp3", ".m4a", ".mp4", ".aac", ".flac", ".wav")
 
 
 def _text(value) -> str:
@@ -89,6 +90,38 @@ def _read_mp4(path: str, result: dict) -> dict:
     return result
 
 
+def _read_wav(path: str, result: dict) -> dict:
+    result["format"] = "WAV"
+    w = WAVE(path)
+    tags = w.tags  # ID3 object, puo essere None
+    if tags is None:
+        return result
+
+    result["title"] = _text(tags.get("TIT2"))
+    result["artist"] = _text(tags.get("TPE1"))
+    result["album_artist"] = _text(tags.get("TPE2"))
+    result["album"] = _text(tags.get("TALB"))
+    result["year"] = _text(tags.get("TDRC"))
+    result["track"] = _text(tags.get("TRCK"))
+    result["genre"] = _text(tags.get("TCON"))
+    result["bpm"] = _text(tags.get("TBPM"))
+    result["key"] = _text(tags.get("TKEY"))
+
+    for k in tags.keys():
+        if k.startswith("COMM"):
+            result["comment"] = _text(tags[k])
+            break
+
+    for k in tags.keys():
+        if k.startswith("APIC"):
+            apic = tags[k]
+            result["cover_base64"] = base64.b64encode(apic.data).decode("ascii")
+            result["cover_mime"] = apic.mime or "image/jpeg"
+            break
+
+    return result
+
+
 def _read_flac(path: str, result: dict) -> dict:
     result["format"] = "FLAC"
     f = FLAC(path)
@@ -147,6 +180,8 @@ def read_metadata(path: str) -> dict:
         return _read_mp4(str(p), result)
     if ext == ".flac":
         return _read_flac(str(p), result)
+    if ext == ".wav":
+        return _read_wav(str(p), result)
     return result
 
 
@@ -286,6 +321,51 @@ def _write_flac(path: str, data: dict, cover_path: Optional[str], remove_cover: 
     f.save()
 
 
+def _write_wav(path: str, data: dict, cover_path: Optional[str], remove_cover: bool) -> None:
+    w = WAVE(path)
+    if w.tags is None:
+        w.add_tags()
+    tags = w.tags
+
+    def set_or_del(key, frame_cls, value):
+        if value:
+            tags[key] = frame_cls(encoding=3, text=value)
+        elif key in tags:
+            del tags[key]
+
+    set_or_del("TIT2", TIT2, data.get("title", ""))
+    set_or_del("TPE1", TPE1, data.get("artist", ""))
+    set_or_del("TPE2", TPE2, data.get("album_artist", ""))
+    set_or_del("TALB", TALB, data.get("album", ""))
+    set_or_del("TDRC", TDRC, data.get("year", ""))
+    set_or_del("TRCK", TRCK, data.get("track", ""))
+    set_or_del("TCON", TCON, data.get("genre", ""))
+    set_or_del("TBPM", TBPM, data.get("bpm", ""))
+    set_or_del("TKEY", TKEY, data.get("key", ""))
+
+    for k in list(tags.keys()):
+        if k.startswith("COMM"):
+            del tags[k]
+    comment = data.get("comment", "")
+    if comment:
+        tags.add(COMM(encoding=3, lang="ita", desc="", text=comment))
+
+    if remove_cover or cover_path:
+        for k in list(tags.keys()):
+            if k.startswith("APIC"):
+                del tags[k]
+    if cover_path:
+        cp = Path(cover_path)
+        if cp.exists():
+            ext_c = cp.suffix.lower()
+            mime = "image/png" if ext_c == ".png" else "image/jpeg"
+            with open(cp, "rb") as f:
+                cover_data = f.read()
+            tags.add(APIC(encoding=3, mime=mime, type=3, desc="Cover", data=cover_data))
+
+    w.save()
+
+
 def write_metadata(path: str, data: dict, cover_path: Optional[str] = None,
                     remove_cover: bool = False) -> None:
     """Salva i metadati. Se remove_cover=True rimuove la copertina esistente
@@ -297,5 +377,7 @@ def write_metadata(path: str, data: dict, cover_path: Optional[str] = None,
         _write_mp4(path, data, cover_path, remove_cover)
     elif ext == ".flac":
         _write_flac(path, data, cover_path, remove_cover)
+    elif ext == ".wav":
+        _write_wav(path, data, cover_path, remove_cover)
     else:
         raise ValueError(f"Formato non supportato: {ext}")

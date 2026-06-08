@@ -248,7 +248,7 @@ class Api:
     # ------------------------------------------------------------------
     def pick_audio_file(self) -> str:
         return self.browse_file([
-            "Audio (*.mp3;*.m4a;*.mp4;*.aac;*.flac)",
+            "Audio (*.mp3;*.m4a;*.mp4;*.aac;*.flac;*.wav)",
             "All files (*.*)",
         ])
 
