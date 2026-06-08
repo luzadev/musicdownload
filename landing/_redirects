@@ -1,0 +1,7 @@
+# Redirects (sintassi Cloudflare Pages, Netlify-style).
+# Niente regola per /api/* qui: lo gestisce il Worker (route definita
+# nel dashboard Cloudflare). Pages serve il resto.
+
+# Quando implementeremo /api/download (stream firmato R2->client), abilitare:
+# /download/macos     /api/download/macos     302
+# /download/windows   /api/download/windows   302
