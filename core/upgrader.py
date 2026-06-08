@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.paths import find_ytdlp, find_ffmpeg_dir, find_ffprobe
+from core.paths import find_ytdlp, find_ffmpeg_dir, find_ffprobe, subprocess_flags
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac"}
 
@@ -61,6 +61,7 @@ def get_bitrate(filepath: str | Path) -> int:
             capture_output=True,
             text=True,
             timeout=30,
+            **subprocess_flags(),
         )
         data = json.loads(result.stdout)
         bit_rate = int(data.get("format", {}).get("bit_rate", 0))
@@ -94,7 +95,7 @@ def _search_youtube(query: str, cookies_path: Optional[str] = None) -> str:
     if cookies_path and Path(cookies_path).exists():
         cmd.extend(["--cookies", cookies_path])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, **subprocess_flags())
     if result.returncode != 0:
         raise ValueError("Ricerca fallita")
 
@@ -128,7 +129,7 @@ def update_cover_only(
     if cookies_path and Path(cookies_path).exists():
         cmd.extend(["--cookies", cookies_path])
 
-    subprocess.run(cmd, capture_output=True, timeout=60)
+    subprocess.run(cmd, capture_output=True, timeout=60, **subprocess_flags())
 
     cover_files = list(temp_dir.glob("cover*.jpg"))
     if not cover_files:
@@ -152,6 +153,7 @@ def update_cover_only(
             ],
             capture_output=True,
             timeout=60,
+            **subprocess_flags(),
         )
     except Exception:
         _cleanup_temp(temp_dir)
@@ -284,6 +286,7 @@ def upgrade_folder(
             with _process_lock:
                 _current_process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    **subprocess_flags(),
                 )
 
             for line in _current_process.stdout:

@@ -48,6 +48,19 @@ def _exe(name: str) -> str:
     return name
 
 
+def subprocess_flags() -> dict:
+    """Kwargs per subprocess.run/Popen che nascondono la console su Windows.
+
+    Senza CREATE_NO_WINDOW, ogni subprocess (yt-dlp, ffmpeg, ffprobe) lanciato
+    da un'app GUI PyInstaller apre una finestra cmd nera per la durata del
+    processo. Su macOS/Linux il flag non esiste, quindi ritorniamo dict vuoto.
+    """
+    if _IS_WINDOWS:
+        # 0x08000000 == CREATE_NO_WINDOW
+        return {"creationflags": 0x08000000}
+    return {}
+
+
 def find_ytdlp() -> str:
     """Trova il path di yt-dlp.
 

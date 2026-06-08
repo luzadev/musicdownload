@@ -15,7 +15,7 @@ import time
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.paths import find_ffmpeg
+from core.paths import find_ffmpeg, subprocess_flags
 
 
 _IS_MAC = sys.platform == "darwin"
@@ -79,6 +79,7 @@ def _list_macos(ffmpeg: str) -> list[dict]:
             [ffmpeg, "-hide_banner", "-f", "avfoundation",
              "-list_devices", "true", "-i", ""],
             capture_output=True, text=True, timeout=10,
+            **subprocess_flags(),
         )
     except Exception:
         return []
@@ -116,6 +117,7 @@ def _list_windows(ffmpeg: str) -> list[dict]:
             [ffmpeg, "-hide_banner", "-f", "dshow",
              "-list_devices", "true", "-i", "dummy"],
             capture_output=True, text=True, timeout=10,
+            **subprocess_flags(),
         )
     except Exception:
         return []
@@ -247,6 +249,7 @@ def start_recording(
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
                     text=False,
+                    **subprocess_flags(),
                 )
 
             drain_t = threading.Thread(target=_drain_stderr,

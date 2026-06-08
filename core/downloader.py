@@ -9,7 +9,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.paths import find_ytdlp, find_ffmpeg_dir
+from core.paths import find_ytdlp, find_ffmpeg_dir, subprocess_flags
 
 
 # Flag globale per interruzione
@@ -102,7 +102,7 @@ def _search_youtube(query: str, cookies_path: Optional[str] = None) -> tuple[str
     if cookies_path and Path(cookies_path).exists():
         cmd.extend(["--cookies", cookies_path])
 
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, **subprocess_flags())
     if result.returncode != 0:
         raise ValueError(f"Ricerca fallita: {result.stderr.strip()}")
 
@@ -204,6 +204,7 @@ def download_playlist(
             with _process_lock:
                 _current_process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    **subprocess_flags(),
                 )
 
             for line in _current_process.stdout:
@@ -278,7 +279,7 @@ def download_direct_url(
         probe_cmd.extend(["--cookies", cookies_path])
 
     try:
-        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60, **subprocess_flags())
         if result.returncode != 0:
             raise ValueError(result.stderr.strip())
     except Exception as e:
@@ -356,6 +357,7 @@ def download_direct_url(
             with _process_lock:
                 _current_process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    **subprocess_flags(),
                 )
 
             for line in _current_process.stdout:
@@ -443,7 +445,7 @@ def download_video(
         probe_cmd.extend(["--cookies", cookies_path])
 
     try:
-        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60)
+        result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60, **subprocess_flags())
         if result.returncode != 0:
             raise ValueError(result.stderr.strip())
     except Exception as e:
@@ -522,6 +524,7 @@ def download_video(
             with _process_lock:
                 _current_process = subprocess.Popen(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    **subprocess_flags(),
                 )
 
             for line in _current_process.stdout:
