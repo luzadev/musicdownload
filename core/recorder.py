@@ -29,6 +29,8 @@ _current_proc: Optional[subprocess.Popen] = None
 _proc_lock = threading.Lock()
 _stop_event = threading.Event()
 _recording_thread: Optional[threading.Thread] = None
+_stderr_buf: list = []
+_stderr_lock = threading.Lock()
 
 
 def is_recording() -> bool:
@@ -216,6 +218,24 @@ def start_recording(
     cmd = _build_record_cmd(ffmpeg, device_id, str(out), bitrate)
 
     _stop_event.clear()
+    with _stderr_lock:
+        _stderr_buf.clear()
+
+    def _drain_stderr(proc):
+        """Drena lo stderr di ffmpeg in modo continuo per evitare blocchi
+        del pipe e per salvare le ultime righe ai fini diagnostici."""
+        try:
+            for raw in iter(proc.stderr.readline, b""):
+                if not raw:
+                    break
+                line = raw.decode("utf-8", errors="ignore").rstrip()
+                with _stderr_lock:
+                    _stderr_buf.append(line)
+                    # Mantieni solo le ultime 50 righe per non sforare la RAM
+                    if len(_stderr_buf) > 50:
+                        del _stderr_buf[0]
+        except Exception:
+            pass
 
     def _worker():
         global _current_proc
@@ -224,16 +244,41 @@ def start_recording(
                 _current_proc = subprocess.Popen(
                     cmd,
                     stdin=subprocess.PIPE,
-                    stdout=subprocess.PIPE,
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.PIPE,
-                    text=False,  # bytes su stdin per "q"
+                    text=False,
                 )
+
+            drain_t = threading.Thread(target=_drain_stderr,
+                                       args=(_current_proc,), daemon=True)
+            drain_t.start()
+
+            # Aspetta brevemente che ffmpeg apra il device. Se fallisce nei
+            # primi ~1.5s, segnala errore prima di emettere 'started'.
+            start = time.monotonic()
+            opened = False
+            for _ in range(15):
+                if _current_proc.poll() is not None:
+                    break
+                # ffmpeg stampa "Press [q] to stop" quando il device e' aperto
+                with _stderr_lock:
+                    if any("Press [q]" in l for l in _stderr_buf):
+                        opened = True
+                        break
+                time.sleep(0.1)
+
+            rc_early = _current_proc.poll()
+            if not opened and rc_early is not None:
+                # ffmpeg e' uscito prima di iniziare a registrare
+                with _proc_lock:
+                    _current_proc = None
+                if progress_callback:
+                    progress_callback("error", {"error": _extract_friendly_error(rc_early)})
+                return
 
             if progress_callback:
                 progress_callback("started", {"output_path": str(out)})
 
-            start = time.monotonic()
-            # Pubblica un tick al secondo
             while True:
                 if _stop_event.is_set():
                     break
@@ -271,12 +316,7 @@ def start_recording(
                 if rc == 0 or out.exists():
                     progress_callback("stopped", {"output_path": str(out), "seconds": seconds})
                 else:
-                    err = ""
-                    try:
-                        err = (_get_last_stderr() or "").strip().splitlines()[-1]
-                    except Exception:
-                        pass
-                    progress_callback("error", {"error": err or f"ffmpeg exit {rc}"})
+                    progress_callback("error", {"error": _extract_friendly_error(rc)})
         except Exception as e:
             with _proc_lock:
                 _current_proc = None
@@ -289,17 +329,42 @@ def start_recording(
     return {"ok": True, "output_path": str(out)}
 
 
-def _get_last_stderr() -> str:
-    """Tenta di leggere lo stderr residuo del processo corrente."""
-    with _proc_lock:
-        proc = _current_proc
-    if proc is None or proc.stderr is None:
-        return ""
-    try:
-        data = proc.stderr.read() or b""
-        return data.decode("utf-8", errors="ignore")
-    except Exception:
-        return ""
+def _extract_friendly_error(rc: int) -> str:
+    """Trasforma rc + stderr di ffmpeg in un messaggio leggibile.
+    Riconosce i casi tipici: permessi microfono, device occupato,
+    device non disponibile, ..."""
+    with _stderr_lock:
+        lines = list(_stderr_buf)
+
+    text = "\n".join(lines).lower()
+
+    if "abort" in text and rc == -6 and sys.platform == "darwin":
+        return (
+            "ffmpeg abortito (errore -6): probabilmente l'app non ha il "
+            "permesso 'Microfono' di macOS. Vai su Preferenze di Sistema "
+            "→ Privacy e sicurezza → Microfono e abilita Terminal/Python. "
+            "Poi riavvia l'app."
+        )
+
+    if any(s in text for s in ("input/output error", "errno 22", "device not configured")):
+        return "Dispositivo non disponibile (riavvia il servizio audio o ricontrolla la selezione)."
+
+    if "permission" in text or "not authorized" in text or "not permitted" in text:
+        return "Permesso microfono negato da macOS. Abilita Python/MusicDownload in Privacy → Microfono."
+
+    if "no such device" in text or "no such audio device" in text:
+        return "Dispositivo non trovato. Premi '↻ Aggiorna' e riseleziona."
+
+    # Restituisci l'ultima riga utile dello stderr (esclude le righe di banner/progress)
+    for line in reversed(lines):
+        l = line.strip()
+        if not l:
+            continue
+        if l.startswith("[avfoundation") or l.startswith("[dshow") or "@ 0x" in l:
+            return l
+        if "error" in l.lower() or "fail" in l.lower() or "denied" in l.lower():
+            return l
+    return f"ffmpeg exit {rc}"
 
 
 def stop_recording() -> dict:
