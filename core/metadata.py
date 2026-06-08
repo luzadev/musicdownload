@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import struct
 from pathlib import Path
 from typing import Optional
 
@@ -90,26 +91,104 @@ def _read_mp4(path: str, result: dict) -> dict:
     return result
 
 
+_WAV_INFO_MAP = {
+    "INAM": "title",
+    "IART": "artist",
+    "IPRD": "album",
+    "ICRD": "year",
+    "IYER": "year",
+    "IGNR": "genre",
+    "ICMT": "comment",
+    "ITRK": "track",
+    "IPRT": "track",
+    "TRCK": "track",
+    "IBPM": "bpm",
+    "TBPM": "bpm",
+    "TKEY": "key",
+}
+
+
+def _read_wav_info_chunk(path: str) -> dict:
+    """Legge il chunk RIFF LIST/INFO di un file WAV.
+    Ritorna un dict con i campi noti. Usato come fallback quando
+    il WAV non contiene ID3 embedded."""
+    out: dict = {}
+    try:
+        with open(path, "rb") as f:
+            header = f.read(12)
+            if len(header) < 12 or header[:4] != b"RIFF" or header[8:12] != b"WAVE":
+                return out
+            while True:
+                hdr = f.read(8)
+                if len(hdr) < 8:
+                    break
+                chunk_id, chunk_size = struct.unpack("<4sI", hdr)
+                if chunk_id == b"LIST":
+                    list_type = f.read(4)
+                    list_end = f.tell() + (chunk_size - 4)
+                    if list_type == b"INFO":
+                        while f.tell() < list_end:
+                            sub = f.read(8)
+                            if len(sub) < 8:
+                                break
+                            sub_id, sub_size = struct.unpack("<4sI", sub)
+                            data = f.read(sub_size).rstrip(b"\x00")
+                            if sub_size % 2 == 1:
+                                f.read(1)  # padding word-aligned
+                            key = _WAV_INFO_MAP.get(sub_id.decode("ascii", errors="ignore"))
+                            if not key or not data:
+                                continue
+                            for enc in ("utf-8", "latin-1"):
+                                try:
+                                    out[key] = data.decode(enc).strip()
+                                    break
+                                except UnicodeDecodeError:
+                                    continue
+                    else:
+                        f.seek(list_end)
+                else:
+                    skip = chunk_size + (chunk_size % 2)
+                    f.seek(skip, 1)
+    except Exception:
+        pass
+    return out
+
+
 def _read_wav(path: str, result: dict) -> dict:
     result["format"] = "WAV"
+
+    # Prima fallback: leggi il chunk INFO (formato RIFF originale)
+    info = _read_wav_info_chunk(path)
+    for k, v in info.items():
+        if v:
+            result[k] = v
+
+    # Poi leggi ID3 se presente; ha priorita sui valori INFO
     w = WAVE(path)
-    tags = w.tags  # ID3 object, puo essere None
+    tags = w.tags
     if tags is None:
         return result
 
-    result["title"] = _text(tags.get("TIT2"))
-    result["artist"] = _text(tags.get("TPE1"))
-    result["album_artist"] = _text(tags.get("TPE2"))
-    result["album"] = _text(tags.get("TALB"))
-    result["year"] = _text(tags.get("TDRC"))
-    result["track"] = _text(tags.get("TRCK"))
-    result["genre"] = _text(tags.get("TCON"))
-    result["bpm"] = _text(tags.get("TBPM"))
-    result["key"] = _text(tags.get("TKEY"))
+    def setif(key, frame_key):
+        v = _text(tags.get(frame_key))
+        if v:
+            result[key] = v
+
+    setif("title", "TIT2")
+    setif("artist", "TPE1")
+    setif("album_artist", "TPE2")
+    setif("album", "TALB")
+    setif("year", "TDRC")
+    setif("track", "TRCK")
+    setif("genre", "TCON")
+    setif("bpm", "TBPM")
+    setif("key", "TKEY")
 
     for k in tags.keys():
         if k.startswith("COMM"):
-            result["comment"] = _text(tags[k])
+            v = _text(tags[k])
+            if v:
+                result["comment"] = v
             break
 
     for k in tags.keys():
