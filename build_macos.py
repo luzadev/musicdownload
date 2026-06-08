@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Build script per creare MusicDownload.app su macOS.
+Build script per creare MusicTools.app su macOS.
 
 Uso:
     python3 build_macos.py
@@ -8,7 +8,7 @@ Uso:
 Cosa fa:
 1. Scarica il binario standalone di yt-dlp per macOS
 2. Raccoglie ffmpeg + ffprobe + tutte le loro dylib da Homebrew
-3. Esegue PyInstaller per creare MusicDownload.app
+3. Esegue PyInstaller per creare MusicTools.app
 
 Requisiti:
     pip3 install pyinstaller
@@ -210,7 +210,7 @@ def run_pyinstaller():
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name", "MusicDownload",
+        "--name", "MusicTools",
         "--windowed",
         "--onedir",
         "--noconfirm",
@@ -230,7 +230,7 @@ def run_pyinstaller():
     log(f"Comando: {' '.join(cmd[:10])}...")
     subprocess.run(cmd, check=True, cwd=str(ROOT))
 
-    app_path = DIST_DIR / "MusicDownload.app"
+    app_path = DIST_DIR / "MusicTools.app"
     if app_path.exists():
         log(f"Build completata: {app_path}")
         # Mostra dimensione
@@ -238,8 +238,8 @@ def run_pyinstaller():
         log(f"Dimensione: {size / 1024 / 1024:.0f} MB")
     else:
         log("ATTENZIONE: .app non trovata, controlla l'output di PyInstaller")
-        # Potrebbe essere in dist/MusicDownload/ (non .app)
-        alt = DIST_DIR / "MusicDownload"
+        # Potrebbe essere in dist/MusicTools/ (non .app)
+        alt = DIST_DIR / "MusicTools"
         if alt.exists():
             log(f"Trovata directory: {alt}")
 
@@ -249,7 +249,7 @@ def run_pyinstaller():
 # =========================================================================
 def main():
     print("=" * 50)
-    print("  MusicDownload — Build macOS")
+    print("  MusicTools — Build macOS")
     print("=" * 50)
 
     # Verifica pyinstaller
@@ -272,12 +272,12 @@ def main():
     print("\n" + "=" * 50)
     print("  DONE!")
     print("=" * 50)
-    app = DIST_DIR / "MusicDownload.app"
+    app = DIST_DIR / "MusicTools.app"
     if app.exists():
         print(f"\n  L'app e in: {app}")
         print(f"  Per testarla: open '{app}'")
         print(f"\n  Per distribuirla, comprimi la cartella:")
-        print(f"  zip -r MusicDownload.zip dist/MusicDownload.app")
+        print(f"  zip -r MusicTools.zip dist/MusicTools.app")
     print()
 
 

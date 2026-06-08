@@ -1,4 +1,4 @@
-name: Build MusicDownload
+name: Build MusicTools
 
 on:
   workflow_dispatch:
@@ -36,14 +36,14 @@ jobs:
       - name: Package .app -> zip
         run: |
           cd dist
-          ditto -c -k --sequesterRsrc --keepParent MusicDownload.app ../MusicDownload-macOS.zip
-          ls -lh ../MusicDownload-macOS.zip
+          ditto -c -k --sequesterRsrc --keepParent MusicTools.app ../MusicTools-macOS.zip
+          ls -lh ../MusicTools-macOS.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MusicDownload-macOS
-          path: MusicDownload-macOS.zip
+          name: MusicTools-macOS
+          path: MusicTools-macOS.zip
           retention-days: 14
 
   # =========================================================
@@ -69,14 +69,14 @@ jobs:
       - name: Package -> zip
         shell: pwsh
         run: |
-          Compress-Archive -Path dist/MusicDownload/* -DestinationPath MusicDownload-Windows.zip -CompressionLevel Optimal
-          Get-Item MusicDownload-Windows.zip
+          Compress-Archive -Path dist/MusicTools/* -DestinationPath MusicTools-Windows.zip -CompressionLevel Optimal
+          Get-Item MusicTools-Windows.zip
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MusicDownload-Windows
-          path: MusicDownload-Windows.zip
+          name: MusicTools-Windows
+          path: MusicTools-Windows.zip
           retention-days: 14
 
   # =========================================================
@@ -90,22 +90,22 @@ jobs:
       - name: Download macOS artifact
         uses: actions/download-artifact@v4
         with:
-          name: MusicDownload-macOS
+          name: MusicTools-macOS
           path: artifacts/macos
 
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          name: MusicDownload-Windows
+          name: MusicTools-Windows
           path: artifacts/windows
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: MusicDownload ${{ github.ref_name }}
+          name: MusicTools ${{ github.ref_name }}
           tag_name: ${{ github.ref_name }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            artifacts/macos/MusicDownload-macOS.zip
-            artifacts/windows/MusicDownload-Windows.zip
+            artifacts/macos/MusicTools-macOS.zip
+            artifacts/windows/MusicTools-Windows.zip

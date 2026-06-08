@@ -1,5 +1,5 @@
 """
-Build script per creare MusicDownload.exe su Windows.
+Build script per creare MusicTools.exe su Windows.
 
 Uso:
     python build_windows.py
@@ -7,7 +7,7 @@ Uso:
 Cosa fa:
 1. Scarica il binario standalone di yt-dlp per Windows
 2. Scarica ffmpeg static build per Windows
-3. Esegue PyInstaller per creare MusicDownload.exe
+3. Esegue PyInstaller per creare MusicTools.exe
 
 Requisiti:
     pip install pyinstaller
@@ -101,7 +101,7 @@ def run_pyinstaller():
 
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--name", "MusicDownload",
+        "--name", "MusicTools",
         "--windowed",
         "--onedir",
         "--noconfirm",
@@ -126,11 +126,11 @@ def run_pyinstaller():
     log(f"Comando: {' '.join(cmd[:10])}...")
     subprocess.run(cmd, check=True, cwd=str(ROOT))
 
-    exe_path = DIST_DIR / "MusicDownload" / "MusicDownload.exe"
+    exe_path = DIST_DIR / "MusicTools" / "MusicTools.exe"
     if exe_path.exists():
         log(f"Build completata: {exe_path}")
     else:
-        log("ATTENZIONE: MusicDownload.exe non trovato, controlla l'output")
+        log("ATTENZIONE: MusicTools.exe non trovato, controlla l'output")
 
 
 # =========================================================================
@@ -138,7 +138,7 @@ def run_pyinstaller():
 # =========================================================================
 def main():
     print("=" * 50)
-    print("  MusicDownload - Build Windows")
+    print("  MusicTools - Build Windows")
     print("=" * 50)
 
     if sys.platform != "win32":
@@ -167,12 +167,12 @@ def main():
     print("\n" + "=" * 50)
     print("  DONE!")
     print("=" * 50)
-    dist = DIST_DIR / "MusicDownload"
+    dist = DIST_DIR / "MusicTools"
     if dist.exists():
         print(f"\n  L'app e in: {dist}")
-        print(f"  Eseguibile: {dist / 'MusicDownload.exe'}")
+        print(f"  Eseguibile: {dist / 'MusicTools.exe'}")
         print(f"\n  Per distribuirla, comprimi la cartella:")
-        print(f"  Comprimi {dist} -> MusicDownload_Windows.zip")
+        print(f"  Comprimi {dist} -> MusicTools_Windows.zip")
     print()
 
 

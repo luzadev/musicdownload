@@ -8,21 +8,39 @@ from pathlib import Path
 VERSION = "v1.2.2"
 
 
+APP_NAME = "MusicTools"
+_LEGACY_NAME = "MusicDownload"
+
+
 def _get_config_dir() -> Path:
     """Ritorna la directory per config.json.
 
     Frozen (bundle PyInstaller):
-    - macOS:   ~/Library/Application Support/MusicDownload/
-    - Windows: %APPDATA%/MusicDownload/
+    - macOS:   ~/Library/Application Support/MusicTools/
+    - Windows: %APPDATA%/MusicTools/
     Dev (non frozen):
     - directory del progetto
+
+    Se la cartella nuova non esiste ma quella legacy 'MusicDownload' si',
+    viene migrata (copia di config.json) cosi' l'utente non perde le
+    impostazioni dopo il rename.
     """
     if getattr(sys, "frozen", False):
         if sys.platform == "win32":
             base = Path(os.environ.get("APPDATA", Path.home()))
         else:
             base = Path.home() / "Library" / "Application Support"
-        config_dir = base / "MusicDownload"
+        config_dir = base / APP_NAME
+        legacy_dir = base / _LEGACY_NAME
+        # Migrazione one-shot: se non esiste la nuova ma esiste la vecchia
+        if not config_dir.exists() and legacy_dir.exists():
+            try:
+                config_dir.mkdir(parents=True, exist_ok=True)
+                legacy_cfg = legacy_dir / "config.json"
+                if legacy_cfg.exists():
+                    (config_dir / "config.json").write_bytes(legacy_cfg.read_bytes())
+            except OSError:
+                pass
         config_dir.mkdir(parents=True, exist_ok=True)
         return config_dir
     return Path(__file__).resolve().parent.parent

@@ -350,7 +350,7 @@ def _extract_friendly_error(rc: int) -> str:
         return "Dispositivo non disponibile (riavvia il servizio audio o ricontrolla la selezione)."
 
     if "permission" in text or "not authorized" in text or "not permitted" in text:
-        return "Permesso microfono negato da macOS. Abilita Python/MusicDownload in Privacy → Microfono."
+        return "Permesso microfono negato da macOS. Abilita Python/MusicTools in Privacy → Microfono."
 
     if "no such device" in text or "no such audio device" in text:
         return "Dispositivo non trovato. Premi '↻ Aggiorna' e riseleziona."

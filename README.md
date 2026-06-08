@@ -1,4 +1,4 @@
-# MusicDownload
+# MusicTools
 
 Applicazione desktop per **scaricare musica e video**, **modificare i metadati** dei file audio e **registrare l'audio** da qualsiasi ingresso del computer.
 
@@ -7,6 +7,8 @@ UI moderna basata su **pywebview** (WebKit su macOS, EdgeChromium su Windows) �
 Sviluppata da **LuZa**.
 
 Repo: <https://github.com/luzadev/musicdownload>
+
+> ℹ️ Il repo Git conserva il nome storico **`musicdownload`** (l'app prima si chiamava così); URL stabili per release già pubblicate e installazioni esistenti.
 
 ## Funzionalità
 
@@ -91,14 +93,14 @@ brew install blackhole-2ch
 
 Anche se non è un microfono fisico, macOS richiede il permesso "Microfono" per leggere da BlackHole via AVFoundation.
 
-Vai su **Preferenze di Sistema → Privacy e sicurezza → Microfono** e abilita l'app da cui lanci MusicDownload (Terminal/iTerm in sviluppo, oppure MusicDownload.app per la build distribuita). Se non vedi nessuna voce, comparirà un popup la prima volta che premi REC — accetta.
+Vai su **Preferenze di Sistema → Privacy e sicurezza → Microfono** e abilita l'app da cui lanci MusicTools (Terminal/iTerm in sviluppo, oppure MusicTools.app per la build distribuita). Se non vedi nessuna voce, comparirà un popup la prima volta che premi REC — accetta.
 
 ### 3. Setup A — minimo (registri ma non senti l'audio durante)
 
 1. Click sull'icona altoparlante nella barra menu → **Output → BlackHole 2ch**
    *Oppure: Preferenze di Sistema → Audio → Uscita → BlackHole 2ch*
 2. Fai partire lo stream (Spotify/YouTube): non sentirai nulla — è normale, l'audio va a BlackHole
-3. App MusicDownload → tab **● Registra** → dispositivo **🔄 BlackHole 2ch (loopback)** → **REC**
+3. App MusicTools → tab **● Registra** → dispositivo **🔄 BlackHole 2ch (loopback)** → **REC**
 4. **Stop** e riascolta il file MP3 generato
 
 ### 4. Setup B — completo (registri E senti l'audio contemporaneamente, consigliato)
@@ -119,7 +121,7 @@ Adesso ogni audio del sistema viene riprodotto sugli speaker (lo senti) e contem
 | Sintomo | Causa probabile | Fix |
 |---|---|---|
 | BlackHole non compare nel dropdown | CoreAudio non l'ha ancora caricato dopo l'install | `sudo killall coreaudiod` poi premi **↻ Aggiorna** |
-| Errore `ffmpeg exit -6` o `permesso Microfono mancante` | macOS nega l'accesso al device | Privacy e sicurezza → Microfono → abilita Terminal/MusicDownload |
+| Errore `ffmpeg exit -6` o `permesso Microfono mancante` | macOS nega l'accesso al device | Privacy e sicurezza → Microfono → abilita Terminal/MusicTools |
 | File MP3 muto | Output di sistema non passa per BlackHole | Cambia output su BlackHole o Multi-Output Device (vedi Setup A/B) |
 | Audio doppio/eco nel file | Stai registrando da BlackHole *e* da microfono fisico simultaneamente | Verifica che nel dropdown ci sia solo `BlackHole 2ch` |
 | Audio crackly/distorto | Sample rate non allineato | In Audio MIDI Setup, BlackHole + altoparlanti tutti a 48 kHz |
@@ -127,7 +129,7 @@ Adesso ogni audio del sistema viene riprodotto sugli speaker (lo senti) e contem
 ## Struttura progetto
 
 ```
-MusicDownload/
+MusicTools/
 ├── main.py                  # Entry point — bootstrap pywebview
 ├── requirements.txt
 ├── build_macos.py           # Script build macOS (.app)
@@ -169,8 +171,8 @@ Il file `config.json` viene creato automaticamente al primo avvio:
 
 Posizione:
 - **Sviluppo**: directory del progetto
-- **macOS bundle**: `~/Library/Application Support/MusicDownload/`
-- **Windows bundle**: `%APPDATA%/MusicDownload/`
+- **macOS bundle**: `~/Library/Application Support/MusicTools/`
+- **Windows bundle**: `%APPDATA%/MusicTools/`
 
 ## Build locale
 
@@ -182,7 +184,7 @@ pip install pyinstaller
 python3 build_macos.py
 ```
 
-Produce `dist/MusicDownload.app` con yt-dlp, ffmpeg, ffprobe e tutte le dylib bundled (rpath patchati con `install_name_tool`).
+Produce `dist/MusicTools.app` con yt-dlp, ffmpeg, ffprobe e tutte le dylib bundled (rpath patchati con `install_name_tool`).
 
 ### Windows
 
@@ -191,14 +193,14 @@ pip install pyinstaller
 python build_windows.py
 ```
 
-Produce `dist/MusicDownload/MusicDownload.exe`. Lo script scarica automaticamente `yt-dlp.exe` e `ffmpeg.exe`/`ffprobe.exe` static build.
+Produce `dist/MusicTools/MusicTools.exe`. Lo script scarica automaticamente `yt-dlp.exe` e `ffmpeg.exe`/`ffprobe.exe` static build.
 
 ## Build & Release automatiche (GitHub Actions)
 
 Ogni push di un tag `v*` triggera la pipeline `.github/workflows/build.yml`:
 
-1. **`build-macos`** (runner `macos-latest`) → `MusicDownload-macOS.zip` (la `.app` zippata con `ditto`)
-2. **`build-windows`** (runner `windows-latest`) → `MusicDownload-Windows.zip`
+1. **`build-macos`** (runner `macos-latest`) → `MusicTools-macOS.zip` (la `.app` zippata con `ditto`)
+2. **`build-windows`** (runner `windows-latest`) → `MusicTools-Windows.zip`
 3. **`release`** → crea automaticamente una GitHub Release con entrambi gli asset allegati
 
 Per pubblicare una nuova versione:
@@ -211,10 +213,10 @@ git push origin v1.3.0
 Per fare solo una build di test (senza release):
 
 ```bash
-gh workflow run "Build MusicDownload" --ref main
+gh workflow run "Build MusicTools" --ref main
 ```
 
-oppure dalla UI: **Actions → Build MusicDownload → Run workflow**.
+oppure dalla UI: **Actions → Build MusicTools → Run workflow**.
 
 Le release ufficiali sono disponibili su <https://github.com/luzadev/musicdownload/releases>.
 

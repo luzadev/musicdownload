@@ -1,5 +1,5 @@
 /* ======================================================
-   MusicDownload — Frontend (vanilla JS)
+   MusicTools — Frontend (vanilla JS)
    ====================================================== */
 
 const $ = (sel) => document.querySelector(sel);

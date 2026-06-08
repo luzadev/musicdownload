@@ -38,7 +38,7 @@ SPOTIFY_GUIDE_TEXT = """\
 1) Vai su https://developer.spotify.com/dashboard e accedi (anche con account free).
 2) Clicca "Create app".
 3) Compila:
-   - App name: MusicDownload (o quello che vuoi)
+   - App name: MusicTools (o quello che vuoi)
    - Description: a piacere
    - Redirect URI: http://localhost:8888/callback (obbligatorio ma non usato)
    - Seleziona "Web API"
@@ -148,7 +148,7 @@ class Api:
         API_URL = "https://api.github.com/repos/luzadev/musicdownload/releases/latest"
         try:
             resp = requests.get(API_URL, headers={
-                "User-Agent": "MusicDownload",
+                "User-Agent": "MusicTools",
                 "Accept": "application/vnd.github+json",
             }, timeout=10)
             resp.raise_for_status()

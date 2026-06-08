@@ -1,4 +1,4 @@
-"""MusicDownload — Entry point (pywebview + WebKit/EdgeChromium)."""
+"""MusicTools — Entry point (pywebview + WebKit/EdgeChromium)."""
 
 import os
 import sys
@@ -23,7 +23,7 @@ def main():
     index_path = _resource_path("webui", "index.html")
 
     window = webview.create_window(
-        title="MusicDownload",
+        title="MusicTools",
         url=index_path,
         js_api=api,
         width=1080,
