@@ -75,29 +75,54 @@ Per scaricare **Instagram / Facebook privati** o aggirare il rate-limit di YouTu
 
 macOS non espone nativamente l'output audio del sistema. Per registrare quello che esce dagli speaker (es. uno stream Spotify/YouTube), serve un driver virtuale di **loopback**. Il più diffuso è **BlackHole**, gratuito e open source.
 
-### Installazione
+### 1. Installazione
 
 ```bash
 brew install blackhole-2ch
 ```
 
-### Configurazione
+> Subito dopo l'installazione, se non vedi BlackHole nella tab Registra, riavvia il servizio audio:
+> ```bash
+> sudo killall coreaudiod
+> ```
+> Si rilancia da solo in pochi secondi, nessun danno. In alternativa, logout/login o riavvio del Mac.
 
-1. **Preferenze di Sistema** → **Audio** → **Uscita** → seleziona **BlackHole 2ch**
-2. Apri la tab **● Registra** in MusicDownload e clicca **↻ Aggiorna**
-3. Nel dropdown vedrai **🔄 BlackHole 2ch (loopback)** — selezionalo
-4. Premi **● REC**, fai partire lo stream, premi **◼ Stop**
+### 2. Permesso Microfono
 
-### Vuoi sentire ancora l'audio mentre registri?
+Anche se non è un microfono fisico, macOS richiede il permesso "Microfono" per leggere da BlackHole via AVFoundation.
 
-Crea un **Multi-Output Device** in **Audio MIDI Setup**:
+Vai su **Preferenze di Sistema → Privacy e sicurezza → Microfono** e abilita l'app da cui lanci MusicDownload (Terminal/iTerm in sviluppo, oppure MusicDownload.app per la build distribuita). Se non vedi nessuna voce, comparirà un popup la prima volta che premi REC — accetta.
 
-1. Apri **Configurazione MIDI Audio** (`Utility → Audio MIDI Setup`)
-2. `+` in basso a sinistra → **Crea dispositivo aggregato a uscita multipla**
-3. Seleziona **BlackHole 2ch** + i tuoi altoparlanti/cuffie
-4. Imposta questo Multi-Output come uscita di sistema
+### 3. Setup A — minimo (registri ma non senti l'audio durante)
 
-Così l'audio va contemporaneamente agli speaker (lo senti) e a BlackHole (viene registrato).
+1. Click sull'icona altoparlante nella barra menu → **Output → BlackHole 2ch**
+   *Oppure: Preferenze di Sistema → Audio → Uscita → BlackHole 2ch*
+2. Fai partire lo stream (Spotify/YouTube): non sentirai nulla — è normale, l'audio va a BlackHole
+3. App MusicDownload → tab **● Registra** → dispositivo **🔄 BlackHole 2ch (loopback)** → **REC**
+4. **Stop** e riascolta il file MP3 generato
+
+### 4. Setup B — completo (registri E senti l'audio contemporaneamente, consigliato)
+
+1. Apri **Configurazione MIDI Audio** (`Applicazioni → Utility → Configurazione MIDI Audio`)
+2. In basso a sinistra: **+ → Crea dispositivo aggregato a uscita multipla** (Multi-Output Device)
+3. Nella colonna a destra, spunta sia **BlackHole 2ch** sia i tuoi **Altoparlanti integrati** (o le cuffie)
+4. Imposta **BlackHole 2ch** come **Master Device** (menù a tendina in alto)
+5. Abilita **Drift Correction** sulla riga degli altoparlanti
+6. (Opzionale) Rinomina il dispositivo aggregato in `Speakers + BlackHole`
+7. **Preferenze di Sistema → Audio → Uscita** → seleziona `Speakers + BlackHole`
+8. Nella tab Registra dell'app scegli **🔄 BlackHole 2ch (loopback)** — **NON il dispositivo aggregato**, quello è solo per riprodurre
+
+Adesso ogni audio del sistema viene riprodotto sugli speaker (lo senti) e contemporaneamente catturato da BlackHole (viene registrato).
+
+### Troubleshooting
+
+| Sintomo | Causa probabile | Fix |
+|---|---|---|
+| BlackHole non compare nel dropdown | CoreAudio non l'ha ancora caricato dopo l'install | `sudo killall coreaudiod` poi premi **↻ Aggiorna** |
+| Errore `ffmpeg exit -6` o `permesso Microfono mancante` | macOS nega l'accesso al device | Privacy e sicurezza → Microfono → abilita Terminal/MusicDownload |
+| File MP3 muto | Output di sistema non passa per BlackHole | Cambia output su BlackHole o Multi-Output Device (vedi Setup A/B) |
+| Audio doppio/eco nel file | Stai registrando da BlackHole *e* da microfono fisico simultaneamente | Verifica che nel dropdown ci sia solo `BlackHole 2ch` |
+| Audio crackly/distorto | Sample rate non allineato | In Audio MIDI Setup, BlackHole + altoparlanti tutti a 48 kHz |
 
 ## Struttura progetto
 

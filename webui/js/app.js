@@ -474,6 +474,13 @@ $("#stopUpgradeBtn").addEventListener("click", async () => {
 // ============================================================
 $("#recRefreshBtn").addEventListener("click", refreshRecDevices);
 
+$("#recOpenGuide").addEventListener("click", (e) => {
+  e.preventDefault();
+  window.pywebview.api.open_external_url(
+    "https://github.com/luzadev/musicdownload#guida-rapida-registrazione-audio-di-sistema-macos"
+  );
+});
+
 $("#recBrowseBtn").addEventListener("click", async () => {
   const path = await window.pywebview.api.browse_directory();
   if (path) {

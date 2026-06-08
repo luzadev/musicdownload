@@ -620,24 +620,43 @@ input[type="number"]::-webkit-inner-spin-button {
    =============================== */
 .hint {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   margin-top: 4px;
-  padding: 10px 14px;
+  padding: 12px 14px;
   background: rgba(236, 72, 153, 0.08);
   border: 1px solid rgba(236, 72, 153, 0.2);
   border-radius: var(--r-sm);
   color: var(--text-2);
   font-size: 12.5px;
+  line-height: 1.55;
 }
 
 .hint-ico {
   color: var(--pink-hover);
   font-size: 14px;
   font-weight: 800;
+  margin-top: 1px;
 }
 
 .hint strong { color: var(--text); font-weight: 700; }
+
+.hint code {
+  background: rgba(255, 255, 255, 0.08);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 11.5px;
+  color: var(--text);
+}
+
+.hint a {
+  color: var(--green-hover);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.hint a:hover { text-decoration: underline; }
 
 /* ===============================
    CHECKBOX
