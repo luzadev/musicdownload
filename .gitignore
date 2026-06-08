@@ -34,3 +34,9 @@ MUSICA/
 # Claude
 .claude/
 Apri con claude-social.command
+
+# Playlist personali (non vanno nel repo)
+Vibes_List.txt
+Beatport Top 100*.txt
+PlayList_2026.txt
+PlayList_da_scaricare.txt
