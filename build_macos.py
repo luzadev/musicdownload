@@ -220,6 +220,7 @@ def run_pyinstaller():
         "--hidden-import", "webview",
         "--hidden-import", "webview.platforms.cocoa",
         "--hidden-import", "requests",
+        "--collect-all", "mutagen",
         # Binari bundled (yt-dlp, ffmpeg, ffprobe + dylibs)
         *add_binaries,
         # Entry point

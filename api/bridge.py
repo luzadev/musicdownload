@@ -20,6 +20,7 @@ from core.downloader import (
     is_stopped as download_is_stopped,
 )
 from core.spotify_client import get_access_token, resolve_spotify_url
+from core.metadata import read_metadata, write_metadata, SUPPORTED_EXTS
 from core.upgrader import (
     upgrade_folder,
     request_stop as request_upgrade_stop,
@@ -134,22 +135,43 @@ class Api:
         return {"ok": True}
 
     def check_update(self) -> dict:
-        """Controlla aggiornamenti chiamando version.json remoto."""
-        import urllib.request
+        """Controlla aggiornamenti interrogando l'API GitHub Releases."""
+        import platform
+        import requests
 
-        UPDATE_URL = "https://www.djluza.com/musicdownload/version.json"
+        API_URL = "https://api.github.com/repos/luzadev/musicdownload/releases/latest"
         try:
-            req = urllib.request.Request(UPDATE_URL, headers={"User-Agent": "MusicDownload"})
-            with urllib.request.urlopen(req, timeout=10) as resp:
-                data = json.loads(resp.read().decode())
-            remote = data.get("version", "")
+            resp = requests.get(API_URL, headers={
+                "User-Agent": "MusicDownload",
+                "Accept": "application/vnd.github+json",
+            }, timeout=10)
+            resp.raise_for_status()
+            data = resp.json()
+
+            remote = data.get("tag_name", "")
+            notes = data.get("body", "") or ""
+            html_url = data.get("html_url", "")
+
+            # Trova l'asset giusto per la piattaforma
+            assets = data.get("assets", []) or []
+            is_macos = platform.system() == "Darwin"
+            keyword = "macos" if is_macos else "windows"
+            download_url = ""
+            for a in assets:
+                name = (a.get("name") or "").lower()
+                if keyword in name and name.endswith(".zip"):
+                    download_url = a.get("browser_download_url", "")
+                    break
+            if not download_url:
+                download_url = html_url  # fallback: pagina release
+
             return {
                 "ok": True,
                 "current": VERSION,
                 "remote": remote,
                 "is_new": bool(remote and remote != VERSION),
-                "download_url": data.get("download_url", ""),
-                "notes": data.get("notes", ""),
+                "download_url": download_url,
+                "notes": notes[:500] if notes else "",  # tronca per UI
             }
         except Exception as e:
             return {"ok": False, "error": str(e), "current": VERSION}
@@ -220,6 +242,45 @@ class Api:
 
     def open_external_url(self, url: str) -> None:
         webbrowser.open(url)
+
+    # ------------------------------------------------------------------
+    # Metadata editor
+    # ------------------------------------------------------------------
+    def pick_audio_file(self) -> str:
+        return self.browse_file([
+            "Audio (*.mp3 *.m4a *.mp4 *.aac *.flac)",
+            "All files (*.*)",
+        ])
+
+    def pick_image_file(self) -> str:
+        return self.browse_file([
+            "Immagini (*.jpg *.jpeg *.png)",
+            "All files (*.*)",
+        ])
+
+    def read_metadata(self, path: str) -> dict:
+        try:
+            data = read_metadata(path)
+            return {"ok": True, "data": data}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def save_metadata(self, payload: dict) -> dict:
+        path = (payload.get("path") or "").strip()
+        if not path:
+            return {"ok": False, "error": "Path mancante"}
+        if not os.path.exists(path):
+            return {"ok": False, "error": "File non trovato"}
+
+        data = payload.get("data") or {}
+        cover_path = (payload.get("cover_path") or "").strip() or None
+        remove_cover = bool(payload.get("remove_cover", False))
+
+        try:
+            write_metadata(path, data, cover_path, remove_cover)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ------------------------------------------------------------------
     # Audio folder scan (Upgrade tab)

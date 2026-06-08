@@ -116,6 +116,7 @@ def run_pyinstaller():
         "--hidden-import", "requests",
         # Collegamenti completi alle DLL .NET di pywebview/pythonnet
         "--collect-all", "webview",
+        "--collect-all", "mutagen",
         # Binari bundled
         *add_binaries,
         # Entry point

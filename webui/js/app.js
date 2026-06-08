@@ -15,6 +15,7 @@ const state = {
   downloading: false,
   upgrading: false,
   videoDownloading: false,
+  meta: { path: "", newCoverPath: "", removeCover: false },
 };
 
 // Wait for pywebview ready
@@ -389,6 +390,144 @@ $("#upgradeBtn").addEventListener("click", async () => {
 $("#stopUpgradeBtn").addEventListener("click", async () => {
   await window.pywebview.api.stop_upgrade();
   $("#stopUpgradeBtn").disabled = true;
+});
+
+// ============================================================
+// METADATA editor
+// ============================================================
+function formatDuration(sec) {
+  if (!sec) return "—";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function populateMetaForm(d) {
+  $("#metaTitle").value = d.title || "";
+  $("#metaArtist").value = d.artist || "";
+  $("#metaAlbum").value = d.album || "";
+  $("#metaAlbumArtist").value = d.album_artist || "";
+  $("#metaYear").value = d.year || "";
+  $("#metaTrack").value = d.track || "";
+  $("#metaGenre").value = d.genre || "";
+  $("#metaBpm").value = d.bpm || "";
+  $("#metaKey").value = d.key || "";
+  $("#metaComment").value = d.comment || "";
+
+  // Info riga sotto il path
+  const info = $("#metaInfo");
+  info.hidden = false;
+  info.innerHTML = `
+    <span><strong>Formato:</strong>${d.format || "—"}</span>
+    <span><strong>Bitrate:</strong>${d.bitrate ? d.bitrate + " kbps" : "—"}</span>
+    <span><strong>Durata:</strong>${formatDuration(d.duration)}</span>
+  `;
+
+  // Cover
+  const preview = $("#metaCoverPreview");
+  preview.innerHTML = "";
+  if (d.cover_base64) {
+    const img = document.createElement("img");
+    img.src = `data:${d.cover_mime || "image/jpeg"};base64,${d.cover_base64}`;
+    preview.appendChild(img);
+  } else {
+    const span = document.createElement("span");
+    span.className = "cover-empty";
+    span.textContent = "Nessuna copertina";
+    preview.appendChild(span);
+  }
+  $("#metaCoverHint").textContent = "";
+  $("#metaCoverHint").className = "cover-hint";
+
+  state.meta.newCoverPath = "";
+  state.meta.removeCover = false;
+}
+
+async function loadMetaFile(path) {
+  const res = await window.pywebview.api.read_metadata(path);
+  if (!res.ok) {
+    toast("Errore lettura: " + (res.error || ""), "error");
+    return;
+  }
+  state.meta.path = path;
+  $("#metaPathDisplay").textContent = path;
+  $("#metaPathDisplay").classList.remove("empty");
+  $("#metaForm").hidden = false;
+  populateMetaForm(res.data);
+}
+
+$("#metaPickBtn").addEventListener("click", async () => {
+  const path = await window.pywebview.api.pick_audio_file();
+  if (path) await loadMetaFile(path);
+});
+
+$("#metaCoverBtn").addEventListener("click", async () => {
+  const path = await window.pywebview.api.pick_image_file();
+  if (!path) return;
+  state.meta.newCoverPath = path;
+  state.meta.removeCover = false;
+
+  // Mostra anteprima leggendo il file via fetch (file:// non funziona da webview;
+  // usiamo solo il nome come hint, l'utente vedra il risultato dopo Save)
+  const hint = $("#metaCoverHint");
+  hint.textContent = "Nuova copertina: " + path.split("/").pop();
+  hint.className = "cover-hint set";
+});
+
+$("#metaCoverRemoveBtn").addEventListener("click", () => {
+  state.meta.newCoverPath = "";
+  state.meta.removeCover = true;
+  const preview = $("#metaCoverPreview");
+  preview.innerHTML = '<span class="cover-empty">Verra rimossa al salvataggio</span>';
+  const hint = $("#metaCoverHint");
+  hint.textContent = "Copertina marcata per rimozione";
+  hint.className = "cover-hint remove";
+});
+
+$("#metaReloadBtn").addEventListener("click", async () => {
+  if (state.meta.path) await loadMetaFile(state.meta.path);
+});
+
+$("#metaSaveBtn").addEventListener("click", async () => {
+  if (!state.meta.path) {
+    toast("Nessun file caricato", "error");
+    return;
+  }
+
+  $("#metaSaveBtn").disabled = true;
+  const status = $("#metaStatus");
+  status.textContent = "Salvataggio…";
+
+  const payload = {
+    path: state.meta.path,
+    data: {
+      title: $("#metaTitle").value,
+      artist: $("#metaArtist").value,
+      album: $("#metaAlbum").value,
+      album_artist: $("#metaAlbumArtist").value,
+      year: $("#metaYear").value,
+      track: $("#metaTrack").value,
+      genre: $("#metaGenre").value,
+      bpm: $("#metaBpm").value,
+      key: $("#metaKey").value,
+      comment: $("#metaComment").value,
+    },
+    cover_path: state.meta.newCoverPath,
+    remove_cover: state.meta.removeCover,
+  };
+
+  const res = await window.pywebview.api.save_metadata(payload);
+  $("#metaSaveBtn").disabled = false;
+
+  if (res.ok) {
+    status.textContent = "✓ Tag salvati";
+    toast("Tag salvati", "success");
+    // Ricarica per mostrare lo stato aggiornato (es. nuova cover)
+    await loadMetaFile(state.meta.path);
+  } else {
+    status.textContent = "";
+    toast("Errore: " + (res.error || ""), "error");
+  }
 });
 
 // ============================================================

@@ -33,6 +33,10 @@
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
         </button>
+        <button class="nav-item" data-view="meta">
+          <span class="nav-icon">🏷</span>
+          <span>Metadati</span>
+        </button>
         <button class="nav-item" data-view="settings">
           <span class="nav-icon">⚙</span>
           <span>Impostazioni</span>
@@ -234,6 +238,93 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="upLog"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: METADATI ===== -->
+      <section class="view" id="view-meta">
+        <header class="hero hero-amber">
+          <div class="hero-content">
+            <div class="hero-eyebrow amber">METADATI</div>
+            <h1 class="hero-title">Modifica tag audio</h1>
+            <p class="hero-subtitle">Titolo · Artista · Album · Anno · Copertina · BPM · Key · MP3/M4A/FLAC</p>
+          </div>
+          <div class="hero-deco">🏷</div>
+        </header>
+
+        <h2 class="section-label">File</h2>
+        <div class="card">
+          <div class="row">
+            <button class="btn btn-amber pill" id="metaPickBtn">📂 Apri file audio</button>
+            <div class="path-display" id="metaPathDisplay">Nessun file selezionato</div>
+          </div>
+          <div class="meta-info" id="metaInfo" hidden></div>
+        </div>
+
+        <div id="metaForm" hidden>
+          <h2 class="section-label">Tag</h2>
+          <div class="card">
+            <div class="form-grid">
+              <div class="field full">
+                <label class="field-label">Titolo</label>
+                <input type="text" id="metaTitle" class="input pill">
+              </div>
+              <div class="field full">
+                <label class="field-label">Artista</label>
+                <input type="text" id="metaArtist" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">Album</label>
+                <input type="text" id="metaAlbum" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">Album Artist</label>
+                <input type="text" id="metaAlbumArtist" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">Anno</label>
+                <input type="text" id="metaYear" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">Traccia</label>
+                <input type="text" id="metaTrack" class="input pill" placeholder="1/12">
+              </div>
+              <div class="field">
+                <label class="field-label">Genere</label>
+                <input type="text" id="metaGenre" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">BPM</label>
+                <input type="text" id="metaBpm" class="input pill">
+              </div>
+              <div class="field">
+                <label class="field-label">Key</label>
+                <input type="text" id="metaKey" class="input pill">
+              </div>
+              <div class="field full">
+                <label class="field-label">Commento</label>
+                <textarea id="metaComment" class="input textarea" rows="3"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <h2 class="section-label">Copertina</h2>
+          <div class="card cover-card">
+            <div class="cover-preview" id="metaCoverPreview">
+              <span class="cover-empty">Nessuna copertina</span>
+            </div>
+            <div class="cover-actions">
+              <button class="btn btn-ghost pill" id="metaCoverBtn">📂 Cambia copertina</button>
+              <button class="btn btn-ghost pill" id="metaCoverRemoveBtn">✕ Rimuovi</button>
+              <div class="cover-hint" id="metaCoverHint"></div>
+            </div>
+          </div>
+
+          <div class="card actions">
+            <button class="btn btn-amber pill btn-lg" id="metaSaveBtn">💾 Salva tag</button>
+            <button class="btn btn-ghost pill btn-lg" id="metaReloadBtn">↺ Ricarica</button>
+            <div class="counter" id="metaStatus"></div>
+          </div>
         </div>
       </section>
 
