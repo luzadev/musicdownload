@@ -238,6 +238,7 @@ def run_pyinstaller():
     app_path = DIST_DIR / "MusicTools.app"
     if app_path.exists():
         log(f"Build completata: {app_path}")
+        patch_info_plist(app_path)
         # Mostra dimensione
         size = sum(f.stat().st_size for f in app_path.rglob("*") if f.is_file())
         log(f"Dimensione: {size / 1024 / 1024:.0f} MB")
@@ -247,6 +248,48 @@ def run_pyinstaller():
         alt = DIST_DIR / "MusicTools"
         if alt.exists():
             log(f"Trovata directory: {alt}")
+
+
+def patch_info_plist(app_path):
+    """Aggiunge le chiavi TCC (Transparency, Consent and Control) richieste
+    da macOS nel bundle .app, altrimenti macOS nega silenziosamente l'accesso
+    al microfono e l'app NON compare in Impostazioni > Privacy e sicurezza.
+
+    Senza NSMicrophoneUsageDescription, qualsiasi tentativo di ffmpeg di
+    aprire un dispositivo audio (incluso BlackHole) viene rifiutato dal
+    sistema e non viene mostrato nessun prompt all'utente.
+    """
+    info_plist = app_path / "Contents" / "Info.plist"
+    if not info_plist.exists():
+        log("ATTENZIONE: Info.plist non trovato, skip patch TCC")
+        return
+
+    pb = "/usr/libexec/PlistBuddy"
+
+    # Helper: aggiungi una chiave; se gia presente sovrascrivila.
+    def add_or_set(key, value, ptype="string"):
+        # Tenta Add; se esiste, fa Set.
+        r = subprocess.run(
+            [pb, "-c", f'Add :{key} {ptype} "{value}"', str(info_plist)],
+            capture_output=True, text=True,
+        )
+        if r.returncode != 0 and "already exists" in (r.stderr + r.stdout).lower():
+            subprocess.run(
+                [pb, "-c", f'Set :{key} "{value}"', str(info_plist)],
+                check=True,
+            )
+
+    log("Patching Info.plist con le chiavi TCC...")
+    add_or_set(
+        "NSMicrophoneUsageDescription",
+        "MusicTools usa il microfono per registrare l'audio del sistema "
+        "(ad esempio tramite BlackHole o un altro dispositivo loopback).",
+    )
+    # Sicurezza extra: dichiarare bundle identifier stabile aiuta il
+    # database TCC a riconoscere coerentemente l'app tra le sessioni.
+    add_or_set("CFBundleIdentifier", "com.djluza.musictools")
+    add_or_set("LSApplicationCategoryType", "public.app-category.music")
+    log("Info.plist aggiornato.")
 
 
 # =========================================================================
