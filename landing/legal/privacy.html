@@ -21,7 +21,7 @@
 
   <main class="legal-doc">
     <h1>Informativa Privacy</h1>
-    <p class="updated">Ultimo aggiornamento: 8 giugno 2026</p>
+    <p class="updated">Ultimo aggiornamento: 9 giugno 2026</p>
 
     <h2>1. Titolare del trattamento</h2>
     <p>Luciano Zappacosta — email <a href="mailto:info@djluza.com">info@djluza.com</a>.</p>
@@ -30,24 +30,26 @@
     <ul>
       <li><strong>Email</strong>: associata all'acquisto. Usata per inviare la chiave di licenza, comunicazioni di servizio e supporto.</li>
       <li><strong>Chiave di licenza, device_id, nome dispositivo, versione app</strong>: salvati nel database licenze per gestire le attivazioni (max 3 dispositivi) e impedire abusi.</li>
+      <li><strong>Piano sottoscritto, id ordine e id sottoscrizione Lemon Squeezy, data scadenza/rinnovo</strong>: necessari per applicare correttamente le funzioni del piano (Basic/Pro/Premium/Annual) e gestire rinnovi, disdette, rimborsi.</li>
+      <li><strong>Contatore download giornaliero</strong>: numero aggregato di download effettuati ogni giorno (azzerato a mezzanotte ora di Roma). Serve esclusivamente ad applicare i limiti del piano (10/30/150 al giorno). Non vengono registrati URL ne' titoli dei brani scaricati.</li>
       <li><strong>Dati di pagamento</strong>: gestiti esclusivamente da Lemon Squeezy Inc. L'Editore non vede ne' conserva i dati della carta.</li>
     </ul>
 
     <h2>3. Finalita' e base giuridica</h2>
     <ul>
-      <li>Esecuzione del contratto (consegna della licenza, supporto, aggiornamenti) — art. 6(1)(b) GDPR.</li>
+      <li>Esecuzione del contratto (consegna della licenza, gestione del piano sottoscritto, rinnovi, supporto, aggiornamenti) — art. 6(1)(b) GDPR.</li>
       <li>Adempimenti fiscali e contabili — art. 6(1)(c) GDPR.</li>
-      <li>Sicurezza del software (verifica anti-abuso delle attivazioni) — interesse legittimo, art. 6(1)(f) GDPR.</li>
+      <li>Sicurezza del software e applicazione dei limiti del piano (verifica anti-abuso delle attivazioni, contatore giornaliero) — interesse legittimo, art. 6(1)(f) GDPR.</li>
     </ul>
 
     <h2>4. Conservazione</h2>
-    <p>I dati di licenza vengono conservati per tutta la durata del prodotto e fino a 5 anni dopo la disattivazione, per adempimenti fiscali. I log tecnici (revalidate) sono conservati per 30 giorni.</p>
+    <p>I dati di licenza vengono conservati per tutta la durata del prodotto e fino a 5 anni dopo la disattivazione, per adempimenti fiscali. I log tecnici (revalidate) sono conservati per 30 giorni. Il contatore download giornaliero viene mantenuto per 90 giorni e poi cancellato.</p>
 
     <h2>5. Terze parti</h2>
     <ul>
-      <li><strong>Lemon Squeezy Inc.</strong> — Merchant of Record, processore di pagamento.</li>
-      <li><strong>Cloudflare Inc.</strong> — hosting infrastruttura backend (Workers, D1, R2, Pages).</li>
-      <li><strong>Resend Inc.</strong> — invio email transazionali.</li>
+      <li><strong>Lemon Squeezy Inc.</strong> — Merchant of Record, processore di pagamento, gestione abbonamenti.</li>
+      <li><strong>Resend Inc.</strong> — invio email transazionali (consegna chiave di licenza, comunicazioni di servizio).</li>
+      <li><strong>Provider di hosting self-managed</strong> — i dati di licenza e il backend API sono ospitati su server gestiti dall'Editore. I dati non vengono condivisi con altri fornitori cloud.</li>
     </ul>
     <p>Tutte queste aziende rispettano standard internazionali di protezione dati e operano con clausole contrattuali standard ove richiesto.</p>
 
