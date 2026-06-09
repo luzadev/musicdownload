@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.7.9"
+VERSION = "v1.7.10"
 
 
 APP_NAME = "MusicTools"

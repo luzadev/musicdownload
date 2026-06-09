@@ -73,7 +73,14 @@ def _is_virtual(name: str) -> bool:
 
 def _list_macos(ffmpeg: str) -> list[dict]:
     """Parsa l'output di `ffmpeg -f avfoundation -list_devices true -i ""`.
-    L'output va su stderr."""
+    L'output va su stderr.
+
+    IMPORTANTE: come 'id' usiamo il NOME del device (non l'index numerico).
+    AVFoundation rinumera silenziosamente i device quando cambia il set di
+    hardware collegato (es. iPhone in continuita', Multi-Output Device, ecc).
+    Il nome e' invece stabile; ffmpeg AVFoundation accetta sia ':<index>'
+    sia ':<name>' come specifica del device input.
+    """
     try:
         proc = subprocess.run(
             [ffmpeg, "-hide_banner", "-f", "avfoundation",
@@ -105,7 +112,12 @@ def _list_macos(ffmpeg: str) -> list[dict]:
         if not m:
             continue
         idx, name = m.group(1), m.group(2).strip()
-        devices.append({"id": idx, "name": name, "is_virtual": _is_virtual(name)})
+        devices.append({
+            "id": name,           # nome stabile (vedi docstring)
+            "index": idx,         # solo informativo per debug
+            "name": name,
+            "is_virtual": _is_virtual(name),
+        })
 
     return devices
 
