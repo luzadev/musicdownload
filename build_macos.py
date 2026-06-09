@@ -239,6 +239,7 @@ def run_pyinstaller():
     if app_path.exists():
         log(f"Build completata: {app_path}")
         patch_info_plist(app_path)
+        adhoc_codesign(app_path)
         # Mostra dimensione
         size = sum(f.stat().st_size for f in app_path.rglob("*") if f.is_file())
         log(f"Dimensione: {size / 1024 / 1024:.0f} MB")
@@ -290,6 +291,52 @@ def patch_info_plist(app_path):
     add_or_set("CFBundleIdentifier", "com.djluza.musictools")
     add_or_set("LSApplicationCategoryType", "public.app-category.music")
     log("Info.plist aggiornato.")
+
+
+def adhoc_codesign(app_path):
+    """Ad-hoc codesign dell'intero bundle .app.
+
+    Senza una firma coerente, macOS tratta ffmpeg (subprocess bundled)
+    come binario separato dal main MusicTools per TCC: ffmpeg apre il
+    dispositivo audio senza errore ma riceve solo silenzio perche' il
+    sistema non gli concede il permesso microfono ereditato.
+
+    `codesign --force --deep --sign -` applica una firma ad-hoc (gratis,
+    senza Developer ID) a tutti i binari nested. Per macOS questo rende
+    l'app un singolo "team" coerente, e il permesso TCC concesso al
+    main si propaga anche a ffmpeg/ffprobe/yt-dlp.
+    """
+    log("Ad-hoc codesign del bundle (per TCC microfono ereditato)...")
+    try:
+        # Rimuovi vecchie firme che potrebbero confondere codesign --deep
+        subprocess.run(
+            ["xattr", "-cr", str(app_path)],
+            capture_output=True,
+        )
+        subprocess.run(
+            ["codesign", "--remove-signature", "--deep", str(app_path)],
+            capture_output=True,
+        )
+        result = subprocess.run(
+            ["codesign", "--force", "--deep", "--sign", "-",
+             "--timestamp=none", str(app_path)],
+            capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            log(f"ATTENZIONE: codesign fallito: {result.stderr.strip()}")
+        else:
+            log("Codesign ad-hoc completato.")
+        # Verifica
+        verify = subprocess.run(
+            ["codesign", "--verify", "--deep", "--strict", str(app_path)],
+            capture_output=True, text=True,
+        )
+        if verify.returncode == 0:
+            log("Verifica firma OK.")
+        else:
+            log(f"NOTA: verifica firma con warning: {verify.stderr.strip()}")
+    except FileNotFoundError:
+        log("ATTENZIONE: 'codesign' non trovato nel PATH, skip ad-hoc signing")
 
 
 # =========================================================================
