@@ -239,7 +239,12 @@ def run_pyinstaller():
     if app_path.exists():
         log(f"Build completata: {app_path}")
         patch_info_plist(app_path)
-        wrap_subprocess_in_bundle(app_path)
+        # NOTA: dal v1.7.14 il microfono viene letto direttamente da
+        # PyObjC/AVCaptureSession nel processo Python (che ha il TCC del
+        # bundle), non da ffmpeg subprocess. ffmpeg fa solo la conversione
+        # CAF -> MP3 (no microfono = no TCC). Per questo non serve piu'
+        # incapsularlo in un sub-bundle .app con NSMicrophoneUsageDescription.
+        # wrap_subprocess_in_bundle(app_path)
         adhoc_codesign(app_path)
         # Mostra dimensione
         size = sum(f.stat().st_size for f in app_path.rglob("*") if f.is_file())

@@ -1,7 +1,10 @@
-"""Registrazione audio da un dispositivo di input via ffmpeg.
+"""Registrazione audio.
 
-macOS: usa AVFoundation (ingresso fisico + driver virtuali tipo BlackHole)
-Windows: usa DirectShow
+macOS: AVCaptureSession via PyObjC dentro al processo Python principale.
+  Il bundle MusicTools.app ha NSMicrophoneUsageDescription e il TCC viene
+  concesso al main, quindi AVFoundation registra senza problemi. ffmpeg
+  viene usato SOLO per convertire il file CAF a MP3 (no microfono = no TCC).
+Windows: ffmpeg DirectShow (qui il problema TCC non esiste).
 """
 
 from __future__ import annotations
@@ -25,38 +28,33 @@ _IS_WIN = sys.platform == "win32"
 # ============================================================
 # Stato globale (un solo recording alla volta)
 # ============================================================
-_current_proc: Optional[subprocess.Popen] = None
-_proc_lock = threading.Lock()
-_stop_event = threading.Event()
-_recording_thread: Optional[threading.Thread] = None
+_recording_lock = threading.Lock()
+_recording_state: dict = {}
 _stderr_buf: list = []
 _stderr_lock = threading.Lock()
 
 
 def is_recording() -> bool:
-    with _proc_lock:
-        return _current_proc is not None and _current_proc.poll() is None
+    with _recording_lock:
+        return bool(_recording_state.get("active"))
 
 
-# ============================================================
-# Lista dispositivi
-# ============================================================
-def list_input_devices() -> list[dict]:
-    """Ritorna la lista dei dispositivi audio di input.
-    Ogni voce: {"id": "0", "name": "...", "is_virtual": bool}.
+def get_last_stderr(max_lines: int = 50) -> list[str]:
+    """Espone le ultime righe di log diagnostico ai fini diagnostici.
 
-    is_virtual = True per driver di loopback noti (BlackHole, Soundflower,
-    Loopback, Audio Hijack, VB-Cable, ...)
+    Su macOS contiene messaggi del backend AVCaptureSession + stderr di
+    ffmpeg durante la conversione CAF->MP3. Su Windows contiene lo
+    stderr di ffmpeg per la registrazione DirectShow.
     """
-    ffmpeg = find_ffmpeg()
-    if not ffmpeg:
-        return []
+    with _stderr_lock:
+        return list(_stderr_buf[-max_lines:])
 
-    if _IS_MAC:
-        return _list_macos(ffmpeg)
-    if _IS_WIN:
-        return _list_windows(ffmpeg)
-    return []
+
+def _log_diag(line: str) -> None:
+    with _stderr_lock:
+        _stderr_buf.append(line)
+        if len(_stderr_buf) > 200:
+            del _stderr_buf[0]
 
 
 _VIRTUAL_KEYWORDS = (
@@ -71,54 +69,44 @@ def _is_virtual(name: str) -> bool:
     return any(k in n for k in _VIRTUAL_KEYWORDS)
 
 
-def _list_macos(ffmpeg: str) -> list[dict]:
-    """Parsa l'output di `ffmpeg -f avfoundation -list_devices true -i ""`.
-    L'output va su stderr.
+# ============================================================
+# Lista dispositivi
+# ============================================================
+def list_input_devices() -> list[dict]:
+    """Ritorna la lista dei dispositivi audio di input.
 
-    IMPORTANTE: come 'id' usiamo il NOME del device (non l'index numerico).
-    AVFoundation rinumera silenziosamente i device quando cambia il set di
-    hardware collegato (es. iPhone in continuita', Multi-Output Device, ecc).
-    Il nome e' invece stabile; ffmpeg AVFoundation accetta sia ':<index>'
-    sia ':<name>' come specifica del device input.
+    Ogni voce: {"id": "...", "name": "...", "is_virtual": bool}.
+    Su macOS l'`id` e' l'uniqueID di AVCaptureDevice (stabile).
+    Su Windows e' il nome del device (richiesto da DirectShow).
     """
+    if _IS_MAC:
+        return _list_macos_avf()
+    if _IS_WIN:
+        ffmpeg = find_ffmpeg()
+        return _list_windows(ffmpeg) if ffmpeg else []
+    return []
+
+
+def _list_macos_avf() -> list[dict]:
+    """Enumera input audio via AVFoundation (no ffmpeg subprocess)."""
     try:
-        proc = subprocess.run(
-            [ffmpeg, "-hide_banner", "-f", "avfoundation",
-             "-list_devices", "true", "-i", ""],
-            capture_output=True, text=True, timeout=10,
-            **subprocess_flags(),
-        )
-    except Exception:
+        from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+    except ImportError as e:
+        _log_diag(f"[avf] AVFoundation non disponibile: {e}")
         return []
 
     devices: list[dict] = []
-    in_audio = False
-    audio_section_re = re.compile(r"AVFoundation\s+audio\s+devices", re.IGNORECASE)
-    other_section_re = re.compile(r"AVFoundation\s+(?:video)\s+devices", re.IGNORECASE)
-    line_re = re.compile(r"\[(\d+)\]\s+(.+?)\s*$")
-
-    for raw in proc.stderr.splitlines():
-        line = raw.strip()
-        if audio_section_re.search(line):
-            in_audio = True
+    for d in AVCaptureDevice.devicesWithMediaType_(AVMediaTypeAudio):
+        try:
+            name = str(d.localizedName())
+            uid = str(d.uniqueID())
+        except Exception:
             continue
-        if other_section_re.search(line):
-            in_audio = False
-            continue
-        if not in_audio:
-            continue
-        clean = re.sub(r"^\[AVFoundation[^\]]*\]\s*", "", line)
-        m = line_re.match(clean)
-        if not m:
-            continue
-        idx, name = m.group(1), m.group(2).strip()
         devices.append({
-            "id": name,           # nome stabile (vedi docstring)
-            "index": idx,         # solo informativo per debug
+            "id": uid,
             "name": name,
             "is_virtual": _is_virtual(name),
         })
-
     return devices
 
 
@@ -162,7 +150,6 @@ def _list_windows(ffmpeg: str) -> list[dict]:
                 name = mn.group(1)
                 devices.append({"id": name, "name": name, "is_virtual": _is_virtual(name)})
 
-    # Dedup preservando l'ordine
     seen = set()
     out = []
     for d in devices:
@@ -174,130 +161,295 @@ def _list_windows(ffmpeg: str) -> list[dict]:
 
 
 # ============================================================
-# Registrazione
+# Permesso microfono (macOS)
 # ============================================================
-def _build_record_cmd(ffmpeg: str, device_id: str, output_path: str,
-                      bitrate: str) -> list[str]:
-    """Comando ffmpeg per registrare su file MP3."""
-    if _IS_MAC:
-        return [
-            ffmpeg, "-hide_banner", "-y",
-            "-f", "avfoundation",
-            "-i", f":{device_id}",
-            "-acodec", "libmp3lame",
-            "-b:a", bitrate,
-            "-vn",
-            output_path,
-        ]
-    if _IS_WIN:
-        return [
-            ffmpeg, "-hide_banner", "-y",
-            "-f", "dshow",
-            "-i", f"audio={device_id}",
-            "-acodec", "libmp3lame",
-            "-b:a", bitrate,
-            "-vn",
-            output_path,
-        ]
-    raise RuntimeError("Sistema operativo non supportato per la registrazione")
+def _ensure_macos_mic_permission() -> tuple[bool, str]:
+    """Verifica/richiede il permesso microfono (TCC) per il processo corrente.
 
-
-def start_recording(
-    device_id: str,
-    output_path: str,
-    bitrate: str = "320k",
-    progress_callback: Optional[Callable] = None,
-) -> dict:
-    """Avvia una registrazione in un thread.
-    Ritorna {ok, error?, output_path?}.
-
-    progress_callback(status, payload) viene chiamato con:
-      ("started",  {"output_path": ...})
-      ("tick",     {"seconds": int})
-      ("stopped",  {"output_path": ..., "seconds": int})
-      ("error",    {"error": "..."})
+    Ritorna (granted, reason).
     """
-    global _current_proc, _recording_thread
+    try:
+        from AVFoundation import AVCaptureDevice, AVMediaTypeAudio
+    except ImportError as e:
+        return False, f"AVFoundation non disponibile: {e}"
 
-    if is_recording():
-        return {"ok": False, "error": "Una registrazione e gia in corso"}
+    # 0=notDetermined, 1=restricted, 2=denied, 3=authorized
+    status = AVCaptureDevice.authorizationStatusForMediaType_(AVMediaTypeAudio)
+    if status == 3:
+        return True, "authorized"
+    if status in (1, 2):
+        return False, (
+            "Permesso microfono negato.\n"
+            "Impostazioni di Sistema -> Privacy e sicurezza -> Microfono\n"
+            "Attiva MusicTools e riavvia l'app."
+        )
+    # notDetermined -> chiedi il prompt in modo sincrono.
+    ev = threading.Event()
+    granted = [False]
 
+    def cb(ok):
+        granted[0] = bool(ok)
+        ev.set()
+
+    AVCaptureDevice.requestAccessForMediaType_completionHandler_(AVMediaTypeAudio, cb)
+    # PyObjC pumpa il run loop automaticamente in attesa del callback.
+    ev.wait(60)
+    if not granted[0]:
+        return False, "Permesso microfono negato dall'utente."
+    return True, "granted"
+
+
+# ============================================================
+# Registrazione macOS via AVCaptureSession
+# ============================================================
+def _start_recording_macos(device_id: str, output_path: str, bitrate: str,
+                            progress_callback: Optional[Callable]) -> dict:
+    from AVFoundation import (
+        AVCaptureSession, AVCaptureDevice, AVCaptureDeviceInput,
+        AVCaptureAudioFileOutput, AVMediaTypeAudio,
+    )
+    from Foundation import NSURL, NSObject
+
+    ok, reason = _ensure_macos_mic_permission()
+    if not ok:
+        return {"ok": False, "error": reason}
+
+    # Trova il device: prima per uniqueID, poi per nome (fallback)
+    dev = AVCaptureDevice.deviceWithUniqueID_(device_id)
+    if dev is None:
+        for d in AVCaptureDevice.devicesWithMediaType_(AVMediaTypeAudio):
+            if str(d.localizedName()) == device_id:
+                dev = d
+                break
+    if dev is None:
+        return {"ok": False, "error": "Dispositivo audio non trovato."}
+
+    session = AVCaptureSession.alloc().init()
+    inp, err = AVCaptureDeviceInput.deviceInputWithDevice_error_(dev, None)
+    if err is not None:
+        return {"ok": False, "error": f"Errore input: {err.localizedDescription()}"}
+    if not session.canAddInput_(inp):
+        return {"ok": False, "error": "Impossibile aggiungere il device alla session."}
+    session.addInput_(inp)
+
+    out = AVCaptureAudioFileOutput.alloc().init()
+    if not session.canAddOutput_(out):
+        return {"ok": False, "error": "Impossibile aggiungere l'output alla session."}
+    session.addOutput_(out)
+
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    caf_path = out_path.with_suffix(".caf")
+
+    # Delegate: aspetta che lo stop produca il file finale
+    class _Delegate(NSObject):
+        def captureOutput_didStartRecordingToOutputFileAtURL_fromConnections_(
+                self, output, url, conns):
+            self.started = True
+
+        def captureOutput_didFinishRecordingToOutputFileAtURL_fromConnections_error_(
+                self, output, url, conns, err):
+            self.done = True
+            self.err = err.localizedDescription() if err is not None else None
+
+    delegate = _Delegate.alloc().init()
+    delegate.started = False
+    delegate.done = False
+    delegate.err = None
+
+    session.startRunning()
+    out.startRecordingToOutputFileURL_outputFileType_recordingDelegate_(
+        NSURL.fileURLWithPath_(str(caf_path)),
+        "com.apple.coreaudio-format",
+        delegate,
+    )
+
+    with _recording_lock:
+        _recording_state.update({
+            "active": True,
+            "session": session,
+            "output": out,
+            "delegate": delegate,
+            "caf_path": str(caf_path),
+            "mp3_path": str(out_path),
+            "bitrate": bitrate,
+            "started_at": time.monotonic(),
+            "progress_cb": progress_callback,
+        })
+
+    if progress_callback:
+        progress_callback("started", {"output_path": str(out_path)})
+
+    # Tick thread per emettere "seconds" elapsed (la UI lo mostra)
+    threading.Thread(target=_tick_worker, daemon=True).start()
+
+    _log_diag(f"[avf] Recording started -> {caf_path}")
+    return {"ok": True, "output_path": str(out_path)}
+
+
+def _tick_worker():
+    while is_recording():
+        with _recording_lock:
+            cb = _recording_state.get("progress_cb")
+            started_at = _recording_state.get("started_at", time.monotonic())
+        elapsed = int(time.monotonic() - started_at)
+        if cb:
+            cb("tick", {"seconds": elapsed})
+        time.sleep(1.0)
+
+
+def _stop_recording_macos() -> dict:
+    with _recording_lock:
+        if not _recording_state.get("active"):
+            return {"ok": True}
+        state = dict(_recording_state)
+        _recording_state["active"] = False
+
+    session = state["session"]
+    out = state["output"]
+    delegate = state["delegate"]
+    caf_path = Path(state["caf_path"])
+    mp3_path = Path(state["mp3_path"])
+    bitrate = state["bitrate"]
+    cb = state["progress_cb"]
+    started_at = state["started_at"]
+
+    # Stop recording (chiama il delegate didFinish dopo aver finalizzato il file)
+    out.stopRecording()
+    # Aspetta il completamento del file
+    deadline = time.time() + 8
+    while not getattr(delegate, "done", False) and time.time() < deadline:
+        time.sleep(0.1)
+    session.stopRunning()
+
+    if getattr(delegate, "err", None):
+        _log_diag(f"[avf] delegate error: {delegate.err}")
+
+    seconds = int(time.monotonic() - started_at)
+
+    # Conversione CAF -> MP3 via ffmpeg (NO microfono: niente TCC)
+    if caf_path.exists():
+        ffmpeg = find_ffmpeg()
+        if ffmpeg:
+            try:
+                proc = subprocess.run(
+                    [ffmpeg, "-hide_banner", "-y", "-i", str(caf_path),
+                     "-acodec", "libmp3lame", "-b:a", bitrate,
+                     "-vn", str(mp3_path)],
+                    capture_output=True, text=True, timeout=120,
+                    **subprocess_flags(),
+                )
+                if proc.returncode != 0:
+                    _log_diag(f"[ffmpeg-convert] rc={proc.returncode}")
+                    for ln in (proc.stderr or "").splitlines()[-10:]:
+                        _log_diag(ln)
+                # Cleanup CAF temporaneo
+                try:
+                    caf_path.unlink()
+                except OSError:
+                    pass
+            except Exception as e:
+                _log_diag(f"[ffmpeg-convert] exception: {e}")
+        else:
+            _log_diag("[ffmpeg-convert] ffmpeg non trovato, lascio il file CAF.")
+            # Se ffmpeg non c'e', rinomina il CAF in MP3 (estensione errata
+            # ma l'utente ha qualcosa)
+            try:
+                caf_path.rename(mp3_path.with_suffix(".caf"))
+            except OSError:
+                pass
+
+    if cb:
+        if mp3_path.exists():
+            cb("stopped", {"output_path": str(mp3_path), "seconds": seconds})
+        else:
+            cb("error", {"error": "File registrato non trovato dopo lo stop."})
+
+    return {"ok": True}
+
+
+# ============================================================
+# Registrazione Windows via ffmpeg DirectShow (invariato)
+# ============================================================
+def _start_recording_windows(device_id: str, output_path: str, bitrate: str,
+                              progress_callback: Optional[Callable]) -> dict:
     ffmpeg = find_ffmpeg()
     if not ffmpeg:
         return {"ok": False, "error": "ffmpeg non trovato"}
 
     out = Path(output_path)
     out.parent.mkdir(parents=True, exist_ok=True)
+    cmd = [
+        ffmpeg, "-hide_banner", "-y",
+        "-f", "dshow",
+        "-i", f"audio={device_id}",
+        "-acodec", "libmp3lame",
+        "-b:a", bitrate,
+        "-vn",
+        str(out),
+    ]
 
-    cmd = _build_record_cmd(ffmpeg, device_id, str(out), bitrate)
-
-    _stop_event.clear()
     with _stderr_lock:
         _stderr_buf.clear()
 
-    def _drain_stderr(proc):
-        """Drena lo stderr di ffmpeg in modo continuo per evitare blocchi
-        del pipe e per salvare le ultime righe ai fini diagnostici."""
+    def _drain(proc):
         try:
             for raw in iter(proc.stderr.readline, b""):
                 if not raw:
                     break
                 line = raw.decode("utf-8", errors="ignore").rstrip()
-                with _stderr_lock:
-                    _stderr_buf.append(line)
-                    # Mantieni solo le ultime 50 righe per non sforare la RAM
-                    if len(_stderr_buf) > 50:
-                        del _stderr_buf[0]
+                _log_diag(line)
         except Exception:
             pass
 
     def _worker():
-        global _current_proc
         try:
-            with _proc_lock:
-                _current_proc = subprocess.Popen(
-                    cmd,
-                    stdin=subprocess.PIPE,
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.PIPE,
-                    text=False,
-                    **subprocess_flags(),
-                )
+            proc = subprocess.Popen(
+                cmd,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,
+                text=False,
+                **subprocess_flags(),
+            )
+            with _recording_lock:
+                _recording_state.update({
+                    "active": True,
+                    "proc": proc,
+                    "output_path": str(out),
+                    "started_at": time.monotonic(),
+                    "progress_cb": progress_callback,
+                })
+            threading.Thread(target=_drain, args=(proc,), daemon=True).start()
 
-            drain_t = threading.Thread(target=_drain_stderr,
-                                       args=(_current_proc,), daemon=True)
-            drain_t.start()
-
-            # Aspetta brevemente che ffmpeg apra il device. Se fallisce nei
-            # primi ~1.5s, segnala errore prima di emettere 'started'.
             start = time.monotonic()
             opened = False
             for _ in range(15):
-                if _current_proc.poll() is not None:
+                if proc.poll() is not None:
                     break
-                # ffmpeg stampa "Press [q] to stop" quando il device e' aperto
                 with _stderr_lock:
                     if any("Press [q]" in l for l in _stderr_buf):
                         opened = True
                         break
                 time.sleep(0.1)
 
-            rc_early = _current_proc.poll()
-            if not opened and rc_early is not None:
-                # ffmpeg e' uscito prima di iniziare a registrare
-                with _proc_lock:
-                    _current_proc = None
+            if not opened and proc.poll() is not None:
+                with _recording_lock:
+                    _recording_state["active"] = False
                 if progress_callback:
-                    progress_callback("error", {"error": _extract_friendly_error(rc_early)})
+                    progress_callback("error", {
+                        "error": _extract_friendly_error_windows(proc.returncode),
+                    })
                 return
 
             if progress_callback:
                 progress_callback("started", {"output_path": str(out)})
 
             while True:
-                if _stop_event.is_set():
-                    break
-                rc = _current_proc.poll()
+                with _recording_lock:
+                    if not _recording_state.get("active"):
+                        break
+                rc = proc.poll()
                 if rc is not None:
                     break
                 elapsed = int(time.monotonic() - start)
@@ -305,123 +457,95 @@ def start_recording(
                     progress_callback("tick", {"seconds": elapsed})
                 time.sleep(1.0)
 
-            # Stop gracefully
-            if _current_proc.poll() is None:
+            if proc.poll() is None:
                 try:
-                    _current_proc.stdin.write(b"q\n")
-                    _current_proc.stdin.flush()
+                    proc.stdin.write(b"q\n")
+                    proc.stdin.flush()
                 except Exception:
                     pass
                 try:
-                    _current_proc.wait(timeout=5)
+                    proc.wait(timeout=5)
                 except subprocess.TimeoutExpired:
-                    _current_proc.terminate()
+                    proc.terminate()
                     try:
-                        _current_proc.wait(timeout=3)
+                        proc.wait(timeout=3)
                     except subprocess.TimeoutExpired:
-                        _current_proc.kill()
+                        proc.kill()
 
-            rc = _current_proc.returncode
             seconds = int(time.monotonic() - start)
-
-            with _proc_lock:
-                _current_proc = None
+            with _recording_lock:
+                _recording_state["active"] = False
 
             if progress_callback:
-                if rc == 0 or out.exists():
+                if proc.returncode == 0 or out.exists():
                     progress_callback("stopped", {"output_path": str(out), "seconds": seconds})
                 else:
-                    progress_callback("error", {"error": _extract_friendly_error(rc)})
+                    progress_callback("error", {
+                        "error": _extract_friendly_error_windows(proc.returncode),
+                    })
         except Exception as e:
-            with _proc_lock:
-                _current_proc = None
+            with _recording_lock:
+                _recording_state["active"] = False
             if progress_callback:
-                progress_callback("error", {"error": str(e)})
+                progress_callback("error", {"error": f"{type(e).__name__}: {e}"})
 
-    _recording_thread = threading.Thread(target=_worker, daemon=True)
-    _recording_thread.start()
-
+    threading.Thread(target=_worker, daemon=True).start()
     return {"ok": True, "output_path": str(out)}
 
 
-def _extract_friendly_error(rc: int) -> str:
-    """Trasforma rc + stderr di ffmpeg in un messaggio leggibile.
-    Riconosce i casi tipici: permessi microfono, device occupato,
-    device non disponibile, clock drift di BlackHole, ecc.
-
-    Fallback: se non riconosce il pattern, ritorna le ultime righe
-    significative dello stderr cosi' l'utente puo' diagnosticare
-    o aprire un ticket.
-    """
+def _extract_friendly_error_windows(rc: int) -> str:
     with _stderr_lock:
         lines = list(_stderr_buf)
-
     text = "\n".join(lines).lower()
-    is_mac = sys.platform == "darwin"
-
-    # ---- Errori specifici (priorita' alta) ----
-
-    if "input/output error" in text or "errno 22" in text:
-        return (
-            "Dispositivo audio non pronto (BlackHole o scheda virtuale). "
-            "Spesso si risolve cosi':\n"
-            "  1) Smetti la registrazione e riprova fra 5 secondi\n"
-            "  2) Se persiste, da Terminale: 'sudo killall coreaudiod'\n"
-            "  3) Verifica che nessun'altra app stia gia' registrando il device"
-        )
-
-    if "device not configured" in text or "device not available" in text:
-        return "Dispositivo non configurato. Premi 'Aggiorna' e riseleziona."
-
-    if "permission" in text or "not authorized" in text or "not permitted" in text \
-       or "tcc" in text or "denied" in text:
-        return _permission_message()
-
-    if "no such device" in text or "no such audio device" in text or "invalid device" in text:
-        return "Dispositivo non trovato. Premi 'Aggiorna' e riseleziona dalla lista."
-
-    # ---- Macro per rc=-6 (SIGABRT) su macOS ----
-    # Su macOS rc=-6 e' quasi sempre il sintomo di un crash di ffmpeg
-    # dovuto al permesso Microfono mancante. La parola 'abort' non
-    # sempre compare nello stderr di ffmpeg recenti.
-    if rc == -6 and is_mac:
-        return _permission_message()
-
-    # ---- Fallback: cerca le ultime righe significative ----
+    if "no such device" in text or "could not find" in text:
+        return "Dispositivo non trovato. Premi 'Aggiorna' e riseleziona."
+    if "permission" in text or "denied" in text:
+        return "Permesso microfono mancante. Impostazioni Windows -> Privacy -> Microfono."
     for line in reversed(lines):
         l = line.strip()
         if not l:
             continue
         low = l.lower()
-        # Riga AVFoundation/dshow specifica (es. "[avfoundation @ 0x...] Could not...")
-        if l.startswith("[avfoundation") or l.startswith("[dshow") or "@ 0x" in l:
+        if "error" in low or "fail" in low or "denied" in low:
             return l
-        if "error" in low or "fail" in low or "denied" in low or "cannot" in low:
-            return l
-
-    # Ultima spiaggia: rc + ultime 3 righe di stderr per debug
     tail = " | ".join(line for line in lines[-3:] if line.strip()) or "(nessuno)"
     return f"ffmpeg exit {rc}. Ultimo stderr: {tail}"
 
 
-def _permission_message() -> str:
-    """Messaggio standardizzato per il problema permesso Microfono macOS."""
-    return (
-        "Permesso Microfono mancante. Su macOS:\n"
-        "  Impostazioni di Sistema -> Privacy e sicurezza -> Microfono\n"
-        "  Abilita 'Terminal' (se lanci l'app da terminale) o 'MusicTools'\n"
-        "  (se usi l'app installata). Poi riavvia l'app."
-    )
+def _stop_recording_windows() -> dict:
+    with _recording_lock:
+        if not _recording_state.get("active"):
+            return {"ok": True}
+        # Il worker thread vede 'active'=False e termina ffmpeg con 'q'.
+        _recording_state["active"] = False
+    return {"ok": True}
 
 
-def get_last_stderr(max_lines: int = 50) -> list[str]:
-    """Espone le ultime righe di stderr ai fini diagnostici.
-    Chiamato dal bridge per la UI 'Mostra log tecnici'."""
+# ============================================================
+# API pubblica
+# ============================================================
+def start_recording(
+    device_id: str,
+    output_path: str,
+    bitrate: str = "320k",
+    progress_callback: Optional[Callable] = None,
+) -> dict:
+    if is_recording():
+        return {"ok": False, "error": "Una registrazione e gia in corso"}
+
     with _stderr_lock:
-        return list(_stderr_buf[-max_lines:])
+        _stderr_buf.clear()
+
+    if _IS_MAC:
+        return _start_recording_macos(device_id, output_path, bitrate, progress_callback)
+    if _IS_WIN:
+        return _start_recording_windows(device_id, output_path, bitrate, progress_callback)
+    return {"ok": False, "error": "Sistema operativo non supportato per la registrazione"}
 
 
 def stop_recording() -> dict:
-    """Ferma la registrazione corrente (se attiva)."""
-    _stop_event.set()
+    if _IS_MAC:
+        return _stop_recording_macos()
+    if _IS_WIN:
+        return _stop_recording_windows()
     return {"ok": True}

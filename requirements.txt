@@ -5,5 +5,6 @@ mutagen>=1.47.0
 pyobjc-core>=10.0 ; sys_platform == "darwin"
 pyobjc-framework-Cocoa>=10.0 ; sys_platform == "darwin"
 pyobjc-framework-WebKit>=10.0 ; sys_platform == "darwin"
+pyobjc-framework-AVFoundation>=10.0 ; sys_platform == "darwin"
 pythonnet==3.0.5 ; sys_platform == "win32"
 clr-loader==0.2.7.post0 ; sys_platform == "win32"
