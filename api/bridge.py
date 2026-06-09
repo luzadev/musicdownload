@@ -229,7 +229,12 @@ class Api:
                 ),
                 "plan": plan,
             }
-        # 2) Quota gate server-side
+        # 2) Quota gate server-side: skippato per i piani senza limite
+        # giornaliero (Annual) — evita una chiamata HTTP inutile e fa
+        # funzionare l'app anche offline per quei piani.
+        plan = license_mod.get_plan()
+        if plan.get("daily_limit") is None:
+            return None
         try:
             res = license_mod.consume_quota(feature)
         except license_mod.LicenseNetworkError as e:

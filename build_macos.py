@@ -293,40 +293,78 @@ def patch_info_plist(app_path):
     log("Info.plist aggiornato.")
 
 
+_BUNDLE_ID = "com.djluza.musictools"
+
+
 def adhoc_codesign(app_path):
-    """Ad-hoc codesign dell'intero bundle .app.
+    """Ad-hoc codesign dell'intero bundle .app con identifier coerente.
 
-    Senza una firma coerente, macOS tratta ffmpeg (subprocess bundled)
-    come binario separato dal main MusicTools per TCC: ffmpeg apre il
-    dispositivo audio senza errore ma riceve solo silenzio perche' il
-    sistema non gli concede il permesso microfono ereditato.
+    macOS tratta ogni binario Mach-O firmato come una "app" distinta per
+    le decisioni TCC (microfono, camera, ecc.). Con `codesign --deep`
+    standard, i nested binary (ffmpeg, ffprobe, yt-dlp) ricevono ognuno
+    un identifier auto-generato del tipo `<nome>-<hash>`, diverso da
+    quello del bundle principale -> TCC NEGA al subprocess.
 
-    `codesign --force --deep --sign -` applica una firma ad-hoc (gratis,
-    senza Developer ID) a tutti i binari nested. Per macOS questo rende
-    l'app un singolo "team" coerente, e il permesso TCC concesso al
-    main si propaga anche a ffmpeg/ffprobe/yt-dlp.
+    Soluzione: firmiamo PRIMA ogni binario interno con `--identifier
+    com.djluza.musictools`, poi il bundle .app intero. Cosi' TCC vede
+    tutti i Mach-O come parte dello stesso "team" e propaga il permesso
+    del main ai subprocess.
     """
-    log("Ad-hoc codesign del bundle (per TCC microfono ereditato)...")
+    log("Ad-hoc codesign del bundle (identifier coerente per TCC)...")
     try:
-        # Rimuovi vecchie firme che potrebbero confondere codesign --deep
-        subprocess.run(
-            ["xattr", "-cr", str(app_path)],
-            capture_output=True,
-        )
-        subprocess.run(
-            ["codesign", "--remove-signature", "--deep", str(app_path)],
-            capture_output=True,
-        )
-        result = subprocess.run(
-            ["codesign", "--force", "--deep", "--sign", "-",
-             "--timestamp=none", str(app_path)],
+        # 1) Pulisci attributi estesi (rimuove quarantine residui dal build)
+        subprocess.run(["xattr", "-cr", str(app_path)], capture_output=True)
+
+        # 2) Trova tutti i Mach-O nested (binari ed eventuali .dylib).
+        #    Li firmiamo uno a uno con identifier coerente, dal piu' profondo
+        #    al piu' esterno (richiesta da codesign).
+        nested_machos = []
+        for p in sorted(app_path.rglob("*"), key=lambda x: -len(x.parts)):
+            if not p.is_file():
+                continue
+            # Skip risorse non eseguibili
+            if p.suffix in (".plist", ".nib", ".png", ".icns", ".svg",
+                             ".html", ".css", ".js", ".json", ".md", ".txt"):
+                continue
+            try:
+                with open(p, "rb") as f:
+                    magic = f.read(4)
+            except Exception:
+                continue
+            # Mach-O magic numbers (32/64-bit, big/little endian, fat)
+            if magic in (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe",
+                         b"\xfe\xed\xfa\xce", b"\xfe\xed\xfa\xcf",
+                         b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"):
+                nested_machos.append(p)
+
+        log(f"Trovati {len(nested_machos)} binari Mach-O da firmare.")
+
+        for p in nested_machos:
+            r = subprocess.run(
+                ["codesign", "--force", "--sign", "-",
+                 "--identifier", _BUNDLE_ID,
+                 "--timestamp=none",
+                 str(p)],
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0:
+                log(f"  warn: firma {p.name} fallita: {r.stderr.strip()}")
+
+        # 3) Firma del bundle .app principale (l'identifier corretto viene
+        #    letto dall'Info.plist - CFBundleIdentifier che gia' settiamo).
+        r = subprocess.run(
+            ["codesign", "--force", "--sign", "-",
+             "--identifier", _BUNDLE_ID,
+             "--timestamp=none",
+             str(app_path)],
             capture_output=True, text=True,
         )
-        if result.returncode != 0:
-            log(f"ATTENZIONE: codesign fallito: {result.stderr.strip()}")
+        if r.returncode != 0:
+            log(f"ATTENZIONE: firma bundle fallita: {r.stderr.strip()}")
         else:
             log("Codesign ad-hoc completato.")
-        # Verifica
+
+        # 4) Verifica finale
         verify = subprocess.run(
             ["codesign", "--verify", "--deep", "--strict", str(app_path)],
             capture_output=True, text=True,
@@ -334,7 +372,7 @@ def adhoc_codesign(app_path):
         if verify.returncode == 0:
             log("Verifica firma OK.")
         else:
-            log(f"NOTA: verifica firma con warning: {verify.stderr.strip()}")
+            log(f"NOTA verifica firma: {verify.stderr.strip()}")
     except FileNotFoundError:
         log("ATTENZIONE: 'codesign' non trovato nel PATH, skip ad-hoc signing")
 
