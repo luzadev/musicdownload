@@ -87,6 +87,14 @@ jobs:
       - name: Build exe
         run: python build_windows.py
 
+      - name: Unblock files (rimuovi MOTW pre-zip)
+        shell: pwsh
+        run: |
+          # Per ridurre l'incidenza del bug "Failed to resolve
+          # Python.Runtime.Loader.Initialize" causato da Mark of the Web.
+          Get-ChildItem -Path dist/MusicTools -Recurse -Include *.dll,*.exe,*.pyd `
+            | Unblock-File
+
       - name: Package -> zip
         shell: pwsh
         run: |

@@ -11,20 +11,37 @@ from pathlib import Path
 # senza l'inizializzazione esplicita. Fix conferma:
 # https://github.com/pythonnet/pythonnet/issues/2178
 if sys.platform == "win32":
-    try:
-        # Punta pythonnet ai propri file runtime dentro al bundle PyInstaller.
-        if getattr(sys, "frozen", False):
+    # ============================================================
+    # Fix Windows: rimuovi Mark of the Web (MOTW) dalle DLL bundled.
+    # Quando l'utente scarica il .zip dal browser, Windows aggiunge
+    # uno stream NTFS Zone.Identifier a TUTTI i file estratti.
+    # .NET Framework 4.x rifiuta silenziosamente di risolvere i
+    # symbol export degli assembly managed con MOTW -> il loader
+    # netfx di pythonnet fallisce con "Failed to resolve
+    # Python.Runtime.Loader.Initialize".
+    # Soluzione: cancelliamo lo stream :Zone.Identifier da ogni
+    # .dll/.exe del bundle al primo avvio (operazione idempotente
+    # e sicura: l'utente ha gia eseguito l'exe esplicitamente).
+    # Vedi: https://github.com/r0x0r/pywebview/issues/1215
+    # ============================================================
+    if getattr(sys, "frozen", False):
+        try:
+            import ctypes
+            _kernel32 = ctypes.windll.kernel32
             _bundle = Path(sys._MEIPASS)  # type: ignore[attr-defined]
-            _rt = _bundle / "pythonnet" / "runtime"
-            if _rt.exists():
-                os.environ["PYTHONNET_RUNTIME"] = "netfx"
-                os.environ["PYTHONNET_PYDLL"] = sys.executable
+            for _f in _bundle.rglob("*"):
+                if _f.suffix.lower() in (".dll", ".exe", ".pyd"):
+                    _kernel32.DeleteFileW(f"{_f}:Zone.Identifier")
+        except Exception as _e:
+            print(f"[bootstrap] MOTW cleanup failed: {_e}")
+
+    try:
+        if getattr(sys, "frozen", False):
+            os.environ["PYTHONNET_RUNTIME"] = "netfx"
         from pythonnet import load as _pythonnet_load
         _pythonnet_load("netfx")
         import clr  # noqa: F401  - inizializza il loader
     except Exception as _e:
-        # Se il preload fallisce, lasciamo che webview tenti comunque:
-        # l'errore originale verra' mostrato con stack trace.
         print(f"[bootstrap] preload pythonnet failed: {_e}")
 
 import webview
