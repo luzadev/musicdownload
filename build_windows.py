@@ -106,6 +106,9 @@ def run_pyinstaller():
         "--windowed",
         "--onedir",
         "--noconfirm",
+        # Forza rebuild pulita (senza, residui di build vecchi possono
+        # confondere il bundling di pythonnet/clr_loader).
+        "--clean",
     ]
     if icon_path.exists():
         cmd.extend(["--icon", str(icon_path)])
@@ -118,6 +121,9 @@ def run_pyinstaller():
         "--hidden-import", "webview.platforms.winforms",
         "--hidden-import", "clr",
         "--hidden-import", "clr_loader",
+        "--hidden-import", "clr_loader.netfx",
+        "--hidden-import", "clr_loader.types",
+        "--hidden-import", "pythonnet",
         "--hidden-import", "requests",
         # Collegamenti completi: webview, pythonnet, clr_loader (porta
         # con se Python.Runtime.dll + nethost.dll + runtimeconfig.json
@@ -127,6 +133,11 @@ def run_pyinstaller():
         "--collect-all", "pythonnet",
         "--collect-all", "clr_loader",
         "--collect-all", "mutagen",
+        # collect-data prende anche i file .json/.dll non-Python che
+        # collect-all potrebbe saltare (Python.Runtime.runtimeconfig.json
+        # in particolare).
+        "--collect-data", "pythonnet",
+        "--collect-data", "clr_loader",
         "--copy-metadata", "pythonnet",
         "--copy-metadata", "clr_loader",
         # Binari bundled

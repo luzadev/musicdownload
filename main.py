@@ -4,6 +4,29 @@ import os
 import sys
 from pathlib import Path
 
+# Windows: forza il caricamento del runtime pythonnet PRIMA di importare
+# webview. Con PyInstaller il lazy-loader fallisce con
+# "Failed to resolve Python.Runtime.Loader.Initialize" perche'
+# Python.Runtime.dll viene bundlata ma il loader non sa risolverla
+# senza l'inizializzazione esplicita. Fix conferma:
+# https://github.com/pythonnet/pythonnet/issues/2178
+if sys.platform == "win32":
+    try:
+        # Punta pythonnet ai propri file runtime dentro al bundle PyInstaller.
+        if getattr(sys, "frozen", False):
+            _bundle = Path(sys._MEIPASS)  # type: ignore[attr-defined]
+            _rt = _bundle / "pythonnet" / "runtime"
+            if _rt.exists():
+                os.environ["PYTHONNET_RUNTIME"] = "netfx"
+                os.environ["PYTHONNET_PYDLL"] = sys.executable
+        from pythonnet import load as _pythonnet_load
+        _pythonnet_load("netfx")
+        import clr  # noqa: F401  - inizializza il loader
+    except Exception as _e:
+        # Se il preload fallisce, lasciamo che webview tenti comunque:
+        # l'errore originale verra' mostrato con stack trace.
+        print(f"[bootstrap] preload pythonnet failed: {_e}")
+
 import webview
 
 from api.bridge import Api
