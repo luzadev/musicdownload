@@ -115,11 +115,20 @@ def run_pyinstaller():
         # Hidden imports per pywebview (EdgeChromium su Windows)
         "--hidden-import", "webview",
         "--hidden-import", "webview.platforms.edgechromium",
+        "--hidden-import", "webview.platforms.winforms",
         "--hidden-import", "clr",
+        "--hidden-import", "clr_loader",
         "--hidden-import", "requests",
-        # Collegamenti completi alle DLL .NET di pywebview/pythonnet
+        # Collegamenti completi: webview, pythonnet, clr_loader (porta
+        # con se Python.Runtime.dll + nethost.dll + runtimeconfig.json
+        # altrimenti winforms.py fallisce con "Failed to resolve
+        # Python.Runtime.Loader.Initialize ...")
         "--collect-all", "webview",
+        "--collect-all", "pythonnet",
+        "--collect-all", "clr_loader",
         "--collect-all", "mutagen",
+        "--copy-metadata", "pythonnet",
+        "--copy-metadata", "clr_loader",
         # Binari bundled
         *add_binaries,
         # Entry point
