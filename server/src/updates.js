@@ -89,7 +89,13 @@ export async function download(req, res) {
   }
 
   const name = path.basename(abs);
-  res.setHeader("Content-Type", "application/zip");
+  const ext = path.extname(name).toLowerCase();
+  const contentType = ext === ".dmg"
+    ? "application/x-apple-diskimage"
+    : ext === ".exe"
+      ? "application/vnd.microsoft.portable-executable"
+      : "application/zip";
+  res.setHeader("Content-Type", contentType);
   res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
   fs.createReadStream(abs).pipe(res);
 }

@@ -33,17 +33,38 @@ jobs:
       - name: Build app
         run: python build_macos.py
 
-      - name: Package .app -> zip
+      - name: Create DMG
         run: |
-          cd dist
-          ditto -c -k --sequesterRsrc --keepParent MusicTools.app ../MusicTools-macOS.zip
-          ls -lh ../MusicTools-macOS.zip
+          STAGING="dmg_staging"
+          rm -rf "$STAGING"
+          mkdir -p "$STAGING"
+          cp -R dist/MusicTools.app "$STAGING/"
+          cp "assets/Fix Gatekeeper.command" "$STAGING/"
+          chmod +x "$STAGING/Fix Gatekeeper.command"
+          ln -s /Applications "$STAGING/Applications"
+          cat > "$STAGING/LEGGIMI.txt" <<'EOF'
+          INSTALLAZIONE MusicTools
+          ========================
+
+          1) Trascina MusicTools.app sulla cartella "Applicazioni"
+             (l'alias e' qui dentro nel DMG)
+
+          2) Doppio click su "Fix Gatekeeper.command"
+             Rimuove la quarantena macOS Gatekeeper (una sola volta).
+
+          3) Apri MusicTools dalle Applicazioni e attiva con email + chiave.
+
+          Problemi? scrivici a info@djluza.com
+          EOF
+          hdiutil create -volname "MusicTools" -srcfolder "$STAGING" \
+                         -ov -format UDZO MusicTools-macOS.dmg
+          ls -lh MusicTools-macOS.dmg
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: MusicTools-macOS
-          path: MusicTools-macOS.zip
+          path: MusicTools-macOS.dmg
           retention-days: 14
 
   # =========================================================
@@ -107,5 +128,5 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
           files: |
-            artifacts/macos/MusicTools-macOS.zip
+            artifacts/macos/MusicTools-macOS.dmg
             artifacts/windows/MusicTools-Windows.zip
