@@ -873,11 +873,23 @@ input[type="number"]::-webkit-inner-spin-button {
   white-space: pre-line;
 }
 
+/* Bottone "Salva impostazioni" — sticky in fondo al viewport per restare
+   sempre visibile mentre l'utente scrolla la tab Impostazioni. Niente
+   ricerca del pulsante in coda. */
+/* Bottone "Salva impostazioni" — sticky in fondo al viewport per restare
+   sempre visibile mentre l'utente scrolla la tab Impostazioni. */
 .save-row {
   display: flex;
   align-items: center;
   gap: 16px;
-  margin: 20px 0 32px;
+  position: sticky;
+  bottom: -24px;
+  padding: 16px 32px;
+  margin: 24px -32px -32px;
+  background: var(--bg);
+  border-top: 1px solid var(--divider);
+  box-shadow: 0 -8px 16px rgba(0, 0, 0, 0.25);
+  z-index: 5;
 }
 
 .save-status {

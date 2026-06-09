@@ -73,18 +73,31 @@ async function handleOrderCreated(payload, attrs, t) {
   const planCode = planByVariantId(variantId);
   const plan = planCode ? getPlan(planCode) : null;
 
-  // Subscriptions: il record vero arriva con subscription_created.
-  // Se per qualche motivo arriva prima (ordine pagato ma sottoscrizione
-  // non ancora generata), accettiamo l'evento ma non creiamo nulla.
-  if (plan && plan.is_subscription) {
-    return { status: 200, body: { ok: true, deferred: "wait_for_subscription_created" } };
+  // Se l'order e' gia stato processato (lo riconosciamo dall'order_id),
+  // non duplichiamo licenza ne' email — ack 200 e basta.
+  const existing = await one(
+    "SELECT id FROM licenses WHERE order_id=? LIMIT 1",
+    [orderId],
+  );
+  if (existing) {
+    return { status: 200, body: { ok: true, duplicate: true } };
   }
 
-  // Annual one-time (o piano non mappato -> trattalo come annual di default
-  // cosi' non lasciamo l'utente senza licenza se ha pagato).
+  // Piano non mappato -> fallback annual cosi' non blocchiamo l'utente
+  // che ha gia pagato (la licenza sara' usabile anche se non sappiamo
+  // i limiti esatti del piano comprato).
   const planForRecord = plan?.code || "annual";
-  const limit = plan?.daily_limit ?? null;
-  const expiresAt = t + ANNUAL_TTL_SECONDS;
+  const planMeta = plan || getPlan("annual");
+  const limit = planMeta?.daily_limit ?? null;
+
+  // Annual one-time: settiamo expires_at = now + 365d.
+  // Subscription mensili: NON settiamo current_period_end qui — lo fara'
+  // subscription_created/subscription_payment_success quando arriva.
+  // Se quell'evento non arrivasse mai (perche' non abilitato in LS
+  // dashboard), la licenza resta utilizzabile (current_period_end NULL
+  // = no scadenza imposta lato server: la sottoscrizione vivra' o
+  // morira' su LS, e i webhook successivi aggiorneranno lo status).
+  const expiresAt = planMeta?.is_subscription ? null : t + ANNUAL_TTL_SECONDS;
   const key = generateLicenseKey();
 
   try {
@@ -103,7 +116,10 @@ async function handleOrderCreated(payload, attrs, t) {
   }
 
   try {
-    await sendLicenseEmail(email, key, { plan: planForRecord, expiresAt });
+    await sendLicenseEmail(email, key, {
+      plan: planForRecord,
+      expiresAt: expiresAt,
+    });
   } catch (e) {
     console.error("[email] send failed:", e?.message || e);
   }
@@ -141,7 +157,7 @@ async function handleSubscriptionCreated(payload, attrs, t) {
   const key = generateLicenseKey();
 
   // Idempotenza: se ricevo lo stesso subscription_created due volte,
-  // riuso la licenza esistente (non ne creo un'altra).
+  // riuso la licenza esistente.
   const existing = await one(
     "SELECT id, license_key FROM licenses WHERE subscription_id=? LIMIT 1",
     [subId],
@@ -156,6 +172,29 @@ async function handleSubscriptionCreated(payload, attrs, t) {
     return { status: 200, body: { ok: true, duplicate: true } };
   }
 
+  // Caso normale ora: la licenza e' gia stata creata da order_created
+  // (con subscription_id NULL). La aggiorno con subscription_id e
+  // current_period_end senza generare una nuova chiave ne' una nuova email.
+  const byOrder = orderId
+    ? await one(
+        `SELECT id FROM licenses
+          WHERE order_id=? AND subscription_id IS NULL LIMIT 1`,
+        [orderId],
+      )
+    : null;
+  if (byOrder) {
+    await exec(
+      `UPDATE licenses
+          SET subscription_id=?, current_period_end=?, plan=?, daily_limit=?,
+              updated_at=?
+        WHERE id=?`,
+      [subId, periodEnd, planCode, plan.daily_limit, t, byOrder.id],
+    );
+    return { status: 200, body: { ok: true, attached_subscription: subId } };
+  }
+
+  // Fallback: nessuna licenza esistente -> ne creiamo una nuova
+  // (puo' succedere se order_created non e' arrivato per qualche motivo).
   try {
     await exec(
       `INSERT INTO licenses

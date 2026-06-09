@@ -91,6 +91,30 @@
     .dl-support { text-align: center; color: var(--text-muted); font-size: 14px; padding-top: 24px; border-top: 1px solid var(--divider); margin-top: 24px; }
     .dl-support a { color: var(--accent); }
 
+    .dl-code {
+      display: block;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin: 8px 0 14px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 13px;
+      color: var(--accent);
+      user-select: all;
+      word-break: break-all;
+    }
+    .dl-sub {
+      margin: 8px 0 0;
+      padding-left: 20px;
+      color: var(--text-muted);
+      font-size: 14.5px;
+      line-height: 1.6;
+    }
+    .dl-sub li { margin-bottom: 4px; }
+    .dl-sub strong { color: var(--text); }
+    .dl-sub code { background: var(--bg-card-2); padding: 1px 6px; border-radius: 4px; font-size: 12.5px; }
+
     .dl-status {
       max-width: 460px;
       margin: -16px auto 24px;
@@ -177,8 +201,17 @@
       <ol>
         <li>Apri il file <code>.dmg</code> scaricato — si monta come volume "MusicTools"</li>
         <li>Trascina <strong>MusicTools.app</strong> sull'alias <strong>Applicazioni</strong> dentro il DMG</li>
-        <li>Doppio click su <strong>Fix Gatekeeper.command</strong> (dentro il DMG): autorizza l'app in 1 click. Si chiude da sola appena finito.</li>
-        <li>Apri MusicTools dalle Applicazioni, inserisci email e chiave per attivare</li>
+        <li>
+          Autorizza l'app (una sola volta, perche' non e' firmata con Developer ID Apple).<br>
+          <strong>Modo piu' semplice:</strong> apri il <strong>Terminale</strong> (cmd+spazio &rarr; "Terminale"), incolla questa riga e premi Invio:
+          <p class="dl-code">xattr -dr com.apple.quarantine /Applications/MusicTools.app</p>
+          <strong>In alternativa</strong> (senza Terminale):
+          <ul class="dl-sub">
+            <li><strong>Tasto destro</strong> su <code>Fix Gatekeeper.command</code> nel DMG &rarr; <strong>Apri</strong> &rarr; <strong>Apri</strong>. Se compare il blocco "non e' in grado di verificare", clicca <strong>Annulla</strong> e procedi col passo successivo.</li>
+            <li>Apri <strong>Impostazioni di Sistema</strong> &rarr; <strong>Privacy e sicurezza</strong>. In fondo vedi "Fix Gatekeeper.command e' stato bloccato": clicca <strong>Apri comunque</strong>.</li>
+          </ul>
+        </li>
+        <li>Apri <strong>MusicTools</strong> dalle Applicazioni, inserisci email e chiave per attivare</li>
       </ol>
     </div>
 

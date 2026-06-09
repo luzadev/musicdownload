@@ -42,7 +42,15 @@ from core.upgrader import (
 
 
 SPOTIFY_GUIDE_TEXT = """\
-1) Vai su https://developer.spotify.com/dashboard e accedi (anche con account free).
+NOTE: Spotify oggi consente di creare le chiavi API SOLO con un account
+Spotify Premium attivo. Senza Premium puoi comunque scaricare:
+ - YouTube, SoundCloud, TikTok, Instagram, Facebook (senza setup)
+ - Brani Spotify SINGOLI (incolla il link e basta, l'app fa il resto)
+Le chiavi Spotify servono solo per playlist e album da Spotify.
+
+Procedura (se hai Spotify Premium):
+
+1) Vai su https://developer.spotify.com/dashboard e accedi.
 2) Clicca "Create app".
 3) Compila:
    - App name: MusicTools (o quello che vuoi)
@@ -55,7 +63,7 @@ SPOTIFY_GUIDE_TEXT = """\
    - Client Secret (clicca "View client secret")
 5) Incollali qui sotto e premi "Salva".
 
-Note: credenziali gratuite, no Premium. Limite 100 richieste/minuto.
+Limite tecnico Spotify: 100 richieste/minuto.
 """
 
 

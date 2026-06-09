@@ -11,7 +11,9 @@
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://musictools.djluza.com" />
 
-  <link rel="icon" type="image/svg+xml" href="assets/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/favicon-192.png" />
+  <link rel="apple-touch-icon" sizes="192x192" href="assets/favicon-192.png" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -20,7 +22,7 @@
   <header class="nav">
     <div class="container nav-row">
       <a href="#top" class="brand">
-        <span class="brand-logo">♫</span>
+        <img class="brand-logo brand-logo-img" src="assets/icon.png" alt="MusicTools" />
         <span class="brand-name">MusicTools</span>
       </a>
       <nav class="nav-links">
@@ -285,17 +287,19 @@
       </div>
 
       <div class="spotify-note">
-        <h3>Per sfruttare al massimo MusicTools serve un account Spotify</h3>
+        <h3>Playlist e album Spotify: serve un account Spotify Premium</h3>
         <p>
-          L'app raggiunge il <strong>100% delle sue funzioni</strong> quando colleghi
-          le tue <strong>chiavi API Spotify</strong>. Sono <strong>gratuite</strong>:
-          basta un account Spotify (anche <strong>quello gratis</strong>, niente
-          Premium richiesto) e bastano <strong>2 minuti</strong> per generarle dalla
-          Developer Dashboard. La guida passo-passo e' integrata nell'app.
+          MusicTools funziona <strong>al 100% subito</strong> con YouTube,
+          SoundCloud, TikTok, Instagram, Facebook e i singoli brani Spotify
+          (anche con account Spotify gratuito).<br>
+          Per scaricare <strong>playlist e album interi da Spotify</strong> servono
+          le tue <strong>chiavi API Spotify</strong>, che oggi Spotify rilascia solo
+          a chi ha un <strong>account Premium</strong> attivo (le crei tu dal
+          Developer Dashboard, in 2 minuti, con la guida integrata nell'app).
         </p>
         <div class="spotify-note-grid">
           <div class="sn-col sn-with">
-            <div class="sn-title">✓ Con chiavi API Spotify (consigliato)</div>
+            <div class="sn-title">✓ Con Spotify Premium + chiavi API</div>
             <ul>
               <li>Scarichi <strong>playlist intere</strong> e <strong>album</strong> da Spotify</li>
               <li>Brani con <strong>metadati e copertine</strong> ufficiali</li>
@@ -303,9 +307,9 @@
             </ul>
           </div>
           <div class="sn-col sn-without">
-            <div class="sn-title">Senza chiavi (modalita' base)</div>
+            <div class="sn-title">Senza Premium (modalita' base)</div>
             <ul>
-              <li>Da Spotify scarichi <strong>un brano alla volta</strong></li>
+              <li>Da Spotify scarichi <strong>un brano alla volta</strong> incollando il link</li>
               <li>YouTube, SoundCloud, TikTok, IG, FB: <strong>nessuna limitazione</strong></li>
               <li>Ricerca per "Artista - Titolo" sempre attiva</li>
             </ul>
@@ -376,8 +380,15 @@
         </details>
 
         <details class="faq-item">
-          <summary>Devo creare un account Spotify Premium o YouTube Premium?</summary>
-          <p>No. Per Spotify ti basta un account gratuito (serve solo per ottenere le credenziali API dal loro dashboard, è gratis). YouTube non richiede account.</p>
+          <summary>Mi serve un abbonamento Spotify Premium?</summary>
+          <p>
+            Solo se vuoi scaricare <strong>playlist e album interi</strong> da Spotify:
+            in quel caso servono le chiavi API Spotify, che oggi Spotify rilascia
+            solo agli account Premium. Con un account Spotify gratuito (o senza
+            account Spotify) <strong>puoi comunque scaricare</strong> da YouTube,
+            SoundCloud, TikTok, IG, FB e i singoli brani Spotify incollando il link.
+          </p>
+          <p>YouTube non richiede alcun account.</p>
         </details>
 
         <details class="faq-item">
@@ -387,12 +398,11 @@
             scarichi senza limiti, link diretti e ricerca per titolo. Senza setup.
           </p>
           <p>
-            <strong>Da Spotify</strong>: senza chiavi puoi scaricare <strong>un
-            brano alla volta</strong> incollando il link al singolo brano (l'app
-            estrae artista e titolo dai metadati pubblici di Spotify e cerca su
-            YouTube). Per <strong>album e playlist</strong> servono le chiavi API
-            — sono gratis (anche con account Spotify free) e la procedura guidata
-            nell'app ci mette 2 minuti.
+            <strong>Da Spotify</strong>: puoi scaricare <strong>un brano alla volta</strong>
+            incollando il link al singolo brano (l'app estrae artista e titolo
+            dai metadati pubblici di Spotify e cerca su YouTube). Per <strong>album
+            e playlist</strong> servono le chiavi API, che Spotify rilascia solo
+            agli account Premium.
           </p>
         </details>
 
@@ -452,7 +462,7 @@
   <footer class="footer">
     <div class="container footer-row">
       <div class="footer-brand">
-        <span class="brand-logo">♫</span>
+        <img class="brand-logo brand-logo-img" src="assets/icon.png" alt="MusicTools" />
         <span>MusicTools</span>
         <span class="footer-by">by LuZa</span>
       </div>
