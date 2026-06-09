@@ -258,45 +258,44 @@ def run_pyinstaller():
 
 
 def patch_info_plist(app_path):
-    """Aggiunge le chiavi TCC (Transparency, Consent and Control) richieste
-    da macOS nel bundle .app, altrimenti macOS nega silenziosamente l'accesso
-    al microfono e l'app NON compare in Impostazioni > Privacy e sicurezza.
+    """Aggiunge le chiavi TCC nell'Info.plist del bundle .app.
 
-    Senza NSMicrophoneUsageDescription, qualsiasi tentativo di ffmpeg di
-    aprire un dispositivo audio (incluso BlackHole) viene rifiutato dal
-    sistema e non viene mostrato nessun prompt all'utente.
+    NSMicrophoneUsageDescription e' obbligatoria: senza, macOS uccide
+    l'app con SIGABRT quando AVFoundation tenta di aprire il microfono.
+
+    Usiamo plistlib invece di PlistBuddy perche' i valori con apostrofi
+    (es. "l'audio") rompono il parser shell-based di PlistBuddy.
     """
+    import plistlib
+
     info_plist = app_path / "Contents" / "Info.plist"
     if not info_plist.exists():
         log("ATTENZIONE: Info.plist non trovato, skip patch TCC")
         return
 
-    pb = "/usr/libexec/PlistBuddy"
-
-    # Helper: aggiungi una chiave; se gia presente sovrascrivila.
-    def add_or_set(key, value, ptype="string"):
-        # Tenta Add; se esiste, fa Set.
-        r = subprocess.run(
-            [pb, "-c", f'Add :{key} {ptype} "{value}"', str(info_plist)],
-            capture_output=True, text=True,
-        )
-        if r.returncode != 0 and "already exists" in (r.stderr + r.stdout).lower():
-            subprocess.run(
-                [pb, "-c", f'Set :{key} "{value}"', str(info_plist)],
-                check=True,
-            )
-
     log("Patching Info.plist con le chiavi TCC...")
-    add_or_set(
-        "NSMicrophoneUsageDescription",
+    with open(info_plist, "rb") as f:
+        data = plistlib.load(f)
+
+    data["NSMicrophoneUsageDescription"] = (
         "MusicTools usa il microfono per registrare l'audio del sistema "
-        "(ad esempio tramite BlackHole o un altro dispositivo loopback).",
+        "(ad esempio tramite BlackHole o un altro dispositivo loopback)."
     )
-    # Sicurezza extra: dichiarare bundle identifier stabile aiuta il
-    # database TCC a riconoscere coerentemente l'app tra le sessioni.
-    add_or_set("CFBundleIdentifier", "com.djluza.musictools")
-    add_or_set("LSApplicationCategoryType", "public.app-category.music")
-    log("Info.plist aggiornato.")
+    # Bundle identifier stabile aiuta TCC a riconoscere l'app tra le sessioni
+    data["CFBundleIdentifier"] = "com.djluza.musictools"
+    data["LSApplicationCategoryType"] = "public.app-category.music"
+
+    with open(info_plist, "wb") as f:
+        plistlib.dump(data, f)
+
+    log(f"Info.plist aggiornato. Chiavi: {sorted(data.keys())[-5:]}")
+    # Verifica
+    with open(info_plist, "rb") as f:
+        verify = plistlib.load(f)
+    if "NSMicrophoneUsageDescription" not in verify:
+        log("ERRORE CRITICO: NSMicrophoneUsageDescription NON e' stata scritta!")
+    else:
+        log("Verifica OK: NSMicrophoneUsageDescription presente.")
 
 
 _BUNDLE_ID = "com.djluza.musictools"
