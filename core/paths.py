@@ -33,11 +33,18 @@ def _bundle_dirs() -> list[Path]:
         # Directory dell'eseguibile
         exe_dir = Path(sys.executable).parent
         dirs.append(exe_dir)
-        # macOS: Contents/Frameworks/ (PyInstaller onedir .app)
+        # macOS: Contents/Frameworks/ (PyInstaller onedir .app) + sub-bundle
+        # ffmpeg.app / ffprobe.app dove sono incapsulati per TCC.
         if not _IS_WINDOWS:
             frameworks = exe_dir.parent / "Frameworks"
             if frameworks.exists():
                 dirs.append(frameworks)
+                # Mini-bundle .app per i subprocess (vedi build_macos.py
+                # wrap_subprocess_in_bundle).
+                for sub in ("ffmpeg.app", "ffprobe.app"):
+                    sub_macos = frameworks / sub / "Contents" / "MacOS"
+                    if sub_macos.exists():
+                        dirs.append(sub_macos)
     return dirs
 
 
@@ -96,55 +103,45 @@ def find_ytdlp() -> str:
     raise FileNotFoundError(msg)
 
 
-def find_ffmpeg_dir() -> Optional[str]:
-    """Trova la directory contenente ffmpeg e ffprobe.
-
-    Ordine di ricerca:
-    1. Bundle PyInstaller
-    2. Percorsi noti per OS
-    3. Qualsiasi posizione nel PATH
-    """
-    ffmpeg_name = _exe("ffmpeg")
-
-    # 1. Bundle
+def _find_binary(name: str) -> Optional[str]:
+    """Trova un binario (ffmpeg o ffprobe) nelle dir del bundle o nel sistema."""
+    exe_name = _exe(name)
+    # 1. Bundle (incluso eventuali sub-bundle .app su macOS)
     for d in _bundle_dirs():
-        if (d / ffmpeg_name).exists():
-            return str(d)
-
-    # 2. Percorsi noti
+        candidate = d / exe_name
+        if candidate.exists():
+            return str(candidate)
+    # 2. Percorsi noti per OS
     if _IS_WINDOWS:
-        # Posizioni comuni su Windows
         for search in (
             Path(os.environ.get("LOCALAPPDATA", "")) / "Programs" / "ffmpeg" / "bin",
             Path("C:/ffmpeg/bin"),
             Path(os.environ.get("ProgramFiles", "")) / "ffmpeg" / "bin",
         ):
-            if (search / "ffmpeg.exe").exists():
-                return str(search)
+            cand = search / exe_name
+            if cand.exists():
+                return str(cand)
     else:
         for search_path in ("/opt/homebrew/bin", "/usr/local/bin"):
-            if (Path(search_path) / "ffmpeg").exists():
-                return search_path
-
+            cand = Path(search_path) / exe_name
+            if cand.exists():
+                return str(cand)
     # 3. PATH generico
-    ffmpeg = shutil.which("ffmpeg")
-    if ffmpeg:
-        return str(Path(ffmpeg).parent)
+    found = shutil.which(name)
+    return found if found else None
 
-    return None
+
+def find_ffmpeg_dir() -> Optional[str]:
+    """Ritorna la directory contenente ffmpeg (utile per PATH env)."""
+    ff = _find_binary("ffmpeg")
+    return str(Path(ff).parent) if ff else None
 
 
 def find_ffmpeg() -> Optional[str]:
     """Ritorna il path completo di ffmpeg."""
-    d = find_ffmpeg_dir()
-    if d:
-        return str(Path(d) / _exe("ffmpeg"))
-    return None
+    return _find_binary("ffmpeg")
 
 
 def find_ffprobe() -> Optional[str]:
     """Ritorna il path completo di ffprobe."""
-    d = find_ffmpeg_dir()
-    if d:
-        return str(Path(d) / _exe("ffprobe"))
-    return None
+    return _find_binary("ffprobe")

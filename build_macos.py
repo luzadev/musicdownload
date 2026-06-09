@@ -239,6 +239,7 @@ def run_pyinstaller():
     if app_path.exists():
         log(f"Build completata: {app_path}")
         patch_info_plist(app_path)
+        wrap_subprocess_in_bundle(app_path)
         adhoc_codesign(app_path)
         # Mostra dimensione
         size = sum(f.stat().st_size for f in app_path.rglob("*") if f.is_file())
@@ -296,6 +297,85 @@ def patch_info_plist(app_path):
 _BUNDLE_ID = "com.djluza.musictools"
 
 
+def _subprocess_info_plist(executable, bundle_id):
+    """Info.plist per un mini-bundle che incapsula un binario subprocess.
+
+    NSMicrophoneUsageDescription qui dentro e' la chiave: senza di essa,
+    macOS uccide il subprocess con SIGABRT appena tenta di aprire un
+    device audio, anche se il main MusicTools ha il proprio TCC concesso.
+    """
+    return (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" '
+        '"http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+        '<plist version="1.0">\n'
+        '<dict>\n'
+        f'    <key>CFBundleExecutable</key><string>{executable}</string>\n'
+        f'    <key>CFBundleIdentifier</key><string>{bundle_id}</string>\n'
+        f'    <key>CFBundleName</key><string>{executable}</string>\n'
+        '    <key>CFBundlePackageType</key><string>APPL</string>\n'
+        '    <key>CFBundleShortVersionString</key><string>1.0</string>\n'
+        '    <key>CFBundleVersion</key><string>1</string>\n'
+        '    <key>LSBackgroundOnly</key><true/>\n'
+        '    <key>LSUIElement</key><true/>\n'
+        '    <key>NSMicrophoneUsageDescription</key>\n'
+        '    <string>MusicTools usa il microfono per registrare l\'audio del '
+        'sistema (BlackHole o altri dispositivi loopback).</string>\n'
+        '</dict>\n'
+        '</plist>\n'
+    )
+
+
+def wrap_subprocess_in_bundle(app_path):
+    """Sposta ffmpeg e ffprobe in mini-bundle .app dentro Frameworks/.
+
+    macOS 14+ ENFORCE il fatto che ogni binario che apre device
+    privacy-sensitive (microfono, camera, ...) debba avere un proprio
+    Info.plist accessibile con NSMicrophoneUsageDescription. Quando
+    ffmpeg viene lanciato come binario standalone (anche se figlio di
+    MusicTools), non c'e' Info.plist associato -> SIGABRT.
+
+    Soluzione: incapsulare ffmpeg in MusicTools.app/Contents/Frameworks/
+    ffmpeg.app/Contents/MacOS/ffmpeg, con Info.plist nel suo bundle.
+    Stesso per ffprobe.
+    """
+    log("Wrapping ffmpeg e ffprobe in sub-bundle .app...")
+    fw = app_path / "Contents" / "Frameworks"
+    if not fw.exists():
+        log("ATTENZIONE: Contents/Frameworks non trovato, skip wrapping.")
+        return
+
+    for name in ("ffmpeg", "ffprobe"):
+        src = fw / name
+        if not src.exists() or not src.is_file():
+            log(f"  skip {name}: non trovato in Frameworks/")
+            continue
+        wrap = fw / f"{name}.app"
+        if wrap.exists():
+            shutil.rmtree(wrap)
+        macos = wrap / "Contents" / "MacOS"
+        macos.mkdir(parents=True, exist_ok=True)
+        dest = macos / name
+        shutil.move(str(src), str(dest))
+        dest.chmod(0o755)
+
+        # Aggiungi un nuovo rpath che punta a Contents/Frameworks/ (dove
+        # stanno le dylib del bundle MusicTools).
+        # @executable_path = ffmpeg.app/Contents/MacOS/
+        # ../../../ = MusicTools.app/Contents/Frameworks/
+        subprocess.run(
+            ["install_name_tool", "-add_rpath",
+             "@executable_path/../../../", str(dest)],
+            capture_output=True,
+        )
+
+        # Crea Info.plist con NSMicrophoneUsageDescription.
+        info = wrap / "Contents" / "Info.plist"
+        bundle_id = f"com.djluza.musictools.{name}"
+        info.write_text(_subprocess_info_plist(name, bundle_id))
+        log(f"  wrap: {name} -> {dest.relative_to(app_path)}")
+
+
 def adhoc_codesign(app_path):
     """Ad-hoc codesign dell'intero bundle .app con identifier coerente.
 
@@ -340,15 +420,41 @@ def adhoc_codesign(app_path):
         log(f"Trovati {len(nested_machos)} binari Mach-O da firmare.")
 
         for p in nested_machos:
+            # Per ffmpeg/ffprobe dentro al sub-bundle .app, usa l'identifier
+            # del SUB-bundle (TCC li tratta come app separate con Info.plist
+            # proprio). Per gli altri binari nested (dylib, framework), usa
+            # l'identifier del bundle principale.
+            ident = _BUNDLE_ID
+            parts = p.relative_to(app_path).parts
+            for sub in ("ffmpeg.app", "ffprobe.app"):
+                if sub in parts:
+                    ident = f"{_BUNDLE_ID}.{sub.replace('.app', '')}"
+                    break
             r = subprocess.run(
                 ["codesign", "--force", "--sign", "-",
-                 "--identifier", _BUNDLE_ID,
+                 "--identifier", ident,
                  "--timestamp=none",
                  str(p)],
                 capture_output=True, text=True,
             )
             if r.returncode != 0:
                 log(f"  warn: firma {p.name} fallita: {r.stderr.strip()}")
+
+        # Firma anche i sub-bundle .app come bundle (con il loro Info.plist).
+        for sub in ("ffmpeg.app", "ffprobe.app"):
+            sub_path = app_path / "Contents" / "Frameworks" / sub
+            if not sub_path.exists():
+                continue
+            sub_ident = f"{_BUNDLE_ID}.{sub.replace('.app', '')}"
+            r = subprocess.run(
+                ["codesign", "--force", "--sign", "-",
+                 "--identifier", sub_ident,
+                 "--timestamp=none",
+                 str(sub_path)],
+                capture_output=True, text=True,
+            )
+            if r.returncode != 0:
+                log(f"  warn: firma {sub} fallita: {r.stderr.strip()}")
 
         # 3) Firma del bundle .app principale (l'identifier corretto viene
         #    letto dall'Info.plist - CFBundleIdentifier che gia' settiamo).
