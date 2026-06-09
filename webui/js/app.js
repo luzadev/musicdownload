@@ -440,6 +440,11 @@ function showView(name) {
   $$(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
 }
 
+function applyTheme(theme) {
+  const t = theme === "light" ? "light" : "dark";
+  document.documentElement.dataset.theme = t;
+}
+
 $$(".nav-item").forEach((btn) => {
   btn.addEventListener("click", () => showView(btn.dataset.view));
 });
@@ -470,6 +475,7 @@ async function init() {
   $("#cookiesInput").value = state.config.cookies_path || "";
   $("#outputInput").value = state.config.output_dir || "";
   $("#themeSelect").value = state.config.theme || "dark";
+  applyTheme(state.config.theme);
 
   // Download tab — usa output_dir come default
   state.dlOutputDir = state.config.output_dir || "";
@@ -1027,6 +1033,10 @@ $("#browseOutputBtn").addEventListener("click", async () => {
   if (path) $("#outputInput").value = path;
 });
 
+$("#themeSelect").addEventListener("change", (e) => {
+  applyTheme(e.target.value);
+});
+
 $("#saveBtn").addEventListener("click", async () => {
   const payload = {
     client_id: $("#clientIdInput").value,
@@ -1037,6 +1047,7 @@ $("#saveBtn").addEventListener("click", async () => {
     output_dir: $("#outputInput").value,
     theme: $("#themeSelect").value,
   };
+  applyTheme(payload.theme);
   const res = await window.pywebview.api.save_settings(payload);
   if (res.ok) {
     state.config = payload;
