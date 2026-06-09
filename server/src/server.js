@@ -5,6 +5,7 @@ import * as license from "./license.js";
 import * as updates from "./updates.js";
 import * as ls from "./lemonsqueezy.js";
 import * as dl from "./downloads.js";
+import * as usage from "./usage.js";
 
 const app = express();
 
@@ -41,6 +42,10 @@ app.use(express.json({ limit: "128kb" }));
 app.post("/api/license/activate",   license.activate);
 app.post("/api/license/validate",   license.validate);
 app.post("/api/license/deactivate", license.deactivate);
+
+// Quota giornaliera
+app.get("/api/usage/status",   usage.status);
+app.post("/api/usage/consume", usage.consume);
 
 // Aggiornamenti + download firmato
 app.get("/api/latest",   updates.latest);

@@ -80,12 +80,132 @@ function renderLicenseStatus() {
     box.innerHTML = `<div class="lic-warn">Licenza non attiva</div>`;
     return;
   }
+  const plan = lic.plan || {};
+  const planLine = plan.code
+    ? `<div class="lic-row"><span>Piano</span><strong>${plan.name || plan.code}</strong></div>`
+    : "";
+  const limitLine = plan.daily_limit
+    ? `<div class="lic-row"><span>Limite giornaliero</span><strong>${plan.daily_limit}</strong></div>`
+    : (plan.code === "annual"
+        ? `<div class="lic-row"><span>Limite giornaliero</span><strong>Illimitato</strong></div>`
+        : "");
+  const expiryLine = plan.expires_at
+    ? `<div class="lic-row"><span>Scade il</span><strong>${fmtDate(plan.expires_at)}</strong></div>`
+    : (plan.period_end
+        ? `<div class="lic-row"><span>Prossimo rinnovo</span><strong>${fmtDate(plan.period_end)}</strong></div>`
+        : "");
   box.innerHTML = `
+    ${planLine}
+    ${limitLine}
+    ${expiryLine}
     <div class="lic-row"><span>Email</span><strong>${lic.email || "—"}</strong></div>
     <div class="lic-row"><span>Chiave</span><strong>${lic.key || "—"}</strong></div>
     <div class="lic-row"><span>Attivata il</span><strong>${fmtDate(lic.activated_at)}</strong></div>
     <div class="lic-row"><span>Ultima verifica</span><strong>${fmtDate(lic.last_validated_at)}</strong></div>
   `;
+}
+
+// ============================================================
+// Piano e quota giornaliera
+// ============================================================
+function applyPlanGate() {
+  // Nasconde le tab non incluse nel piano corrente.
+  const lic = state.license || {};
+  const features = (lic.plan && lic.plan.features) || [];
+  $$(".nav-item[data-feature]").forEach((btn) => {
+    const f = btn.dataset.feature;
+    const allowed = features.includes(f);
+    btn.hidden = !allowed;
+    if (!allowed && btn.classList.contains("active")) {
+      // Fallback alla prima tab disponibile (audio o settings)
+      const fallback = $$(".nav-item[data-feature]:not([hidden])")[0]
+        || $(".nav-item[data-view='settings']");
+      if (fallback) showView(fallback.dataset.view);
+    }
+  });
+}
+
+function renderQuotaBox(q) {
+  const box = $("#quotaBox");
+  if (!box) return;
+  const lic = state.license || {};
+  const plan = (q && q.plan) || lic.plan || {};
+  if (!plan.code || plan.code === "annual" || plan.daily_limit == null) {
+    // Annual / unlimited -> niente contatore
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  $("#quotaUsed").textContent = String((q && q.used) ?? 0);
+  $("#quotaLimit").textContent = String(plan.daily_limit);
+  $("#quotaPlanName").textContent = plan.name || plan.code;
+  const upBtn = $("#quotaUpgradeBtn");
+  if (upBtn) upBtn.hidden = plan.code === "premium";
+}
+
+async function refreshQuota() {
+  const lic = state.license || {};
+  const plan = lic.plan || {};
+  if (!lic.licensed || !plan.code || plan.daily_limit == null) {
+    renderQuotaBox(null);
+    return;
+  }
+  try {
+    const res = await window.pywebview.api.get_quota_status();
+    if (res && res.ok) {
+      renderQuotaBox(res.quota);
+    }
+  } catch (_e) { /* offline: lascia stato precedente */ }
+}
+
+function showUpgradeModal(reason, payload) {
+  const modal = $("#upgradeModal");
+  if (!modal) return;
+  const title = $("#upgradeModalTitle");
+  const body = $("#upgradeModalBody");
+  if (reason === "feature_not_in_plan") {
+    title.textContent = "Funzione non inclusa nel piano";
+    body.innerHTML = `
+      <p>${payload.error || "Questa funzione non e' inclusa nel tuo piano."}</p>
+      <p class="modal-hint">Passa a un piano superiore per sbloccarla.</p>
+    `;
+  } else if (reason === "quota_exceeded") {
+    const q = payload.quota || {};
+    title.textContent = "Limite giornaliero raggiunto";
+    body.innerHTML = `
+      <p>${payload.error || "Hai raggiunto il limite giornaliero del tuo piano."}</p>
+      <p class="modal-hint">Usati oggi: <strong>${q.used ?? "?"} / ${q.limit ?? "?"}</strong>. Il contatore si resetta a mezzanotte (ora di Roma).</p>
+    `;
+  } else if (reason === "license_invalid") {
+    title.textContent = "Licenza non valida";
+    body.innerHTML = `<p>${payload.error || "La tua licenza non e' piu' valida."}</p>`;
+  } else if (reason === "offline") {
+    title.textContent = "Connessione assente";
+    body.innerHTML = `<p>${payload.error || "Impossibile contattare il server."}</p>`;
+  } else {
+    title.textContent = "Operazione bloccata";
+    body.innerHTML = `<p>${payload.error || "L'operazione non e' stata avviata."}</p>`;
+  }
+  modal.hidden = false;
+}
+
+function hideUpgradeModal() {
+  const modal = $("#upgradeModal");
+  if (modal) modal.hidden = true;
+}
+
+/** Gestisce il dict di errore restituito dai metodi start_*: se e' un
+ *  gate failure (feature/quota/license/offline), mostra il modal e
+ *  ritorna true (= caller deve interrompere il flow). */
+function handleGateBlock(res) {
+  if (!res || res.ok !== false) return false;
+  const r = res.reason;
+  if (r === "feature_not_in_plan" || r === "quota_exceeded"
+      || r === "license_invalid" || r === "offline") {
+    showUpgradeModal(r, res);
+    return true;
+  }
+  return false;
 }
 
 async function activateLicense() {
@@ -109,6 +229,8 @@ async function activateLicense() {
       state.license = res.license;
       applyLicenseGate();
       renderLicenseStatus();
+      applyPlanGate();
+      refreshQuota();
       toast("Licenza attivata. Benvenuto!", "success");
     } else {
       err.textContent = res.error || "Errore di attivazione.";
@@ -143,6 +265,7 @@ window.bridge = {
 
 const bridgeHandlers = {
   "log": ({ view, msg }) => appendLog(view, msg),
+  "quota:update": (q) => renderQuotaBox(q),
 
   "download:progress": (p) => {
     if (typeof p.overall === "number") {
@@ -336,6 +459,8 @@ async function init() {
 
   applyLicenseGate();
   renderLicenseStatus();
+  applyPlanGate();
+  refreshQuota();
 
   // Populate Settings fields
   $("#clientIdInput").value = state.config.client_id || "";
@@ -471,7 +596,7 @@ $("#downloadBtn").addEventListener("click", async () => {
           subfolder: "",
         });
         if (!res.ok) {
-          toast(res.error || "Errore", "error");
+          if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
           bridgeHandlers["download:done"]();
         }
         return;
@@ -484,7 +609,7 @@ $("#downloadBtn").addEventListener("click", async () => {
   }
 
   if (!res.ok) {
-    toast(res.error || "Errore", "error");
+    if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
     bridgeHandlers["download:done"]();
   }
 });
@@ -541,7 +666,7 @@ $("#videoDownloadBtn").addEventListener("click", async () => {
     audio_only: videoMode === "audio",
   });
   if (!res.ok) {
-    toast(res.error || "Errore", "error");
+    if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
     bridgeHandlers["video:done"]();
   }
 });
@@ -602,7 +727,7 @@ $("#upgradeBtn").addEventListener("click", async () => {
     threshold: parseInt($("#upThreshold").value, 10) || 310,
   });
   if (!res.ok) {
-    toast(res.error || "Errore", "error");
+    if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
     bridgeHandlers["upgrade:done"]();
   }
 });
@@ -694,7 +819,7 @@ $("#recStartBtn").addEventListener("click", async () => {
     bitrate: $("#recBitrate").value,
   });
   if (!res.ok) {
-    toast(res.error || "Errore", "error");
+    if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
   }
 });
 
@@ -876,7 +1001,7 @@ $("#metaSaveBtn").addEventListener("click", async () => {
     await loadMetaFile(state.meta.path);
   } else {
     status.textContent = "";
-    toast("Errore: " + (res.error || ""), "error");
+    if (!handleGateBlock(res)) toast("Errore: " + (res.error || ""), "error");
   }
 });
 
@@ -1003,6 +1128,8 @@ $("#revalidateLicenseBtn")?.addEventListener("click", async () => {
     if (res.ok) {
       state.license = res.license;
       renderLicenseStatus();
+      applyPlanGate();
+      refreshQuota();
       if (res.license.licensed) {
         toast("Licenza verificata", "success");
       } else {
@@ -1014,6 +1141,22 @@ $("#revalidateLicenseBtn")?.addEventListener("click", async () => {
     btn.disabled = false;
     btn.textContent = old;
   }
+});
+
+// ============================================================
+// Modal Upgrade
+// ============================================================
+$("#upgradeCloseBtn")?.addEventListener("click", hideUpgradeModal);
+$("#upgradeCloseBtn2")?.addEventListener("click", hideUpgradeModal);
+$("#upgradeModal")?.addEventListener("click", (e) => {
+  if (e.target === e.currentTarget) hideUpgradeModal();
+});
+$("#upgradeOpenBtn")?.addEventListener("click", async () => {
+  hideUpgradeModal();
+  try { await window.pywebview.api.open_purchase_page(); } catch (_e) {}
+});
+$("#quotaUpgradeBtn")?.addEventListener("click", async () => {
+  try { await window.pywebview.api.open_purchase_page(); } catch (_e) {}
 });
 
 // ============================================================

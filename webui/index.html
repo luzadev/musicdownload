@@ -21,23 +21,23 @@
       <div class="divider"></div>
 
       <nav class="nav">
-        <button class="nav-item active" data-view="download">
+        <button class="nav-item active" data-view="download" data-feature="audio">
           <span class="nav-icon">⬇</span>
           <span>Scarica</span>
         </button>
-        <button class="nav-item" data-view="video">
+        <button class="nav-item" data-view="video" data-feature="video">
           <span class="nav-icon">🎬</span>
           <span>Video</span>
         </button>
-        <button class="nav-item" data-view="upgrade">
+        <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
         </button>
-        <button class="nav-item" data-view="meta">
+        <button class="nav-item" data-view="meta" data-feature="metadata">
           <span class="nav-icon">🏷</span>
           <span>Metadati</span>
         </button>
-        <button class="nav-item" data-view="record">
+        <button class="nav-item" data-view="record" data-feature="record">
           <span class="nav-icon">●</span>
           <span>Registra</span>
         </button>
@@ -50,6 +50,19 @@
           <span>Guida</span>
         </button>
       </nav>
+
+      <div class="quota-box" id="quotaBox" hidden>
+        <div class="quota-label">Oggi</div>
+        <div class="quota-value">
+          <span id="quotaUsed">0</span>
+          <span class="quota-sep">/</span>
+          <span id="quotaLimit">10</span>
+        </div>
+        <div class="quota-plan" id="quotaPlanName">Basic</div>
+        <button type="button" class="quota-upgrade" id="quotaUpgradeBtn" hidden>
+          Upgrade
+        </button>
+      </div>
 
       <div class="footer">
         <div class="footer-by">by LuZa</div>
@@ -888,6 +901,23 @@
       <div class="modal-foot">
         <button class="btn btn-purple pill" id="guideOpenDashBtn">Apri Spotify Dashboard</button>
         <button class="btn btn-ghost pill" id="guideCloseBtn2">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== MODAL: Upgrade richiesto ============== -->
+  <div class="modal-backdrop" id="upgradeModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2 id="upgradeModalTitle">Passa a un piano superiore</h2>
+        <button class="modal-close" id="upgradeCloseBtn">×</button>
+      </div>
+      <div class="modal-body" id="upgradeModalBody">
+        <!-- popolato dinamicamente -->
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-primary pill" id="upgradeOpenBtn">Vedi i piani</button>
+        <button class="btn btn-ghost pill" id="upgradeCloseBtn2">Chiudi</button>
       </div>
     </div>
   </div>

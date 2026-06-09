@@ -123,6 +123,7 @@ class Api:
             "config": safe_cfg,
             "spotify_guide": SPOTIFY_GUIDE_TEXT,
             "license": license_status,
+            "plan": license_mod.get_plan(cfg),
             "purchase_url": "https://musictools.djluza.com",
         }
 
@@ -180,6 +181,63 @@ class Api:
     def open_purchase_page(self) -> dict:
         webbrowser.open("https://musictools.djluza.com")
         return {"ok": True}
+
+    # ------------------------------------------------------------------
+    # Quota giornaliera
+    # ------------------------------------------------------------------
+    def get_quota_status(self) -> dict:
+        """Ritorna lo stato quota corrente (lettura senza incremento)."""
+        try:
+            data = license_mod.get_quota_status()
+            return {"ok": True, "quota": data}
+        except license_mod.LicenseNetworkError as e:
+            return {"ok": False, "offline": True, "error": str(e)}
+        except license_mod.LicenseError as e:
+            return {"ok": False, "error": str(e)}
+
+    def _gate(self, feature: str) -> Optional[dict]:
+        """Verifica feature + quota prima di un'azione.
+
+        Ritorna None se l'azione e' permessa; altrimenti un dict di
+        errore pronto per la UI (con eventuale info quota per il modal
+        "limite raggiunto").
+        """
+        # 1) Feature gate locale (dai claims JWT in config)
+        if not license_mod.has_feature(feature):
+            plan = license_mod.get_plan()
+            plan_name = plan.get("name") or "il tuo piano"
+            return {
+                "ok": False,
+                "reason": "feature_not_in_plan",
+                "feature": feature,
+                "error": (
+                    f"Questa funzione non e' inclusa in {plan_name}. "
+                    "Passa a un piano superiore per sbloccarla."
+                ),
+                "plan": plan,
+            }
+        # 2) Quota gate server-side
+        try:
+            res = license_mod.consume_quota(feature)
+        except license_mod.LicenseNetworkError as e:
+            return {
+                "ok": False, "reason": "offline", "offline": True,
+                "error": f"Impossibile contattare il server: {e}",
+            }
+        except license_mod.LicenseError as e:
+            return {"ok": False, "reason": "license_invalid", "error": str(e)}
+
+        if not res.get("allowed", True):
+            return {
+                "ok": False,
+                "reason": "quota_exceeded",
+                "feature": feature,
+                "error": res.get("error") or "Limite giornaliero raggiunto.",
+                "quota": res,
+            }
+        # OK: notifico la UI dello stato quota aggiornato
+        self._emit("quota:update", res)
+        return None
 
     def check_update(self) -> dict:
         """Controlla aggiornamenti interrogando l'API djluza.com.
@@ -326,6 +384,10 @@ class Api:
         if not os.path.exists(path):
             return {"ok": False, "error": "File non trovato"}
 
+        gate = self._gate("metadata")
+        if gate:
+            return gate
+
         data = payload.get("data") or {}
         cover_path = (payload.get("cover_path") or "").strip() or None
         remove_cover = bool(payload.get("remove_cover", False))
@@ -359,6 +421,10 @@ class Api:
             filename = f"Registrazione_{time.strftime('%Y%m%d_%H%M%S')}.mp3"
         if not filename.lower().endswith(".mp3"):
             filename += ".mp3"
+
+        gate = self._gate("record")
+        if gate:
+            return gate
 
         out_path = os.path.join(output_dir, filename)
 
@@ -412,6 +478,10 @@ class Api:
         if not output_dir:
             return {"ok": False, "error": "Cartella output non impostata"}
 
+        gate = self._gate("audio")
+        if gate:
+            return gate
+
         self._download_thread = threading.Thread(
             target=self._download_worker,
             args=(list(urls), output_dir),
@@ -440,6 +510,10 @@ class Api:
             safe = subfolder.replace("/", "_").replace("\\", "_").strip()
             if safe:
                 output_dir = os.path.join(output_dir, safe)
+
+        gate = self._gate("audio")
+        if gate:
+            return gate
 
         self._download_thread = threading.Thread(
             target=self._tracks_worker,
@@ -627,6 +701,10 @@ class Api:
         if not directory:
             return {"ok": False, "error": "Cartella non impostata"}
 
+        gate = self._gate("upgrade")
+        if gate:
+            return gate
+
         cfg = load_config()
         cookies_path = cfg.get("cookies_path", "")
 
@@ -699,6 +777,11 @@ class Api:
             return {"ok": False, "error": "Nessun URL fornito"}
         if not output_dir:
             return {"ok": False, "error": "Cartella output non impostata"}
+
+        # Anche "audio_only" video count come video: usa codec/yt-dlp diversi
+        gate = self._gate("video")
+        if gate:
+            return gate
 
         self._video_thread = threading.Thread(
             target=self._video_worker,

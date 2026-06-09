@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.6.0"
+VERSION = "v1.7.0"
 
 
 APP_NAME = "MusicTools"
@@ -77,6 +77,14 @@ DEFAULTS = {
     "license_activated_at": 0,  # epoch della prima attivazione
     "last_validated_at": 0,     # epoch dell'ultima revalidate online riuscita
     "device_id": "",            # UUID generato al primo avvio
+    # ---- Piano (snapshot dei claims JWT) ----
+    "plan_code": "",            # "basic" | "pro" | "premium" | "annual"
+    "plan_name": "",            # nome user-facing
+    "plan_features": [],        # ["audio", "video", "record", "metadata", "upgrade"]
+    "plan_daily_limit": None,   # None = unlimited (annual), altrimenti int
+    "plan_is_subscription": False,
+    "plan_expires_at": 0,       # solo per annual one-time
+    "plan_period_end": 0,       # solo per subscription mensili
 }
 
 

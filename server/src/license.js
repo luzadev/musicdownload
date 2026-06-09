@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { one, exec } from "./db.js";
 import { signJwt, verifyJwt } from "./jwt.js";
+import { getPlan, planSnapshot } from "./plans.js";
 
 const MAX_ACTIVATIONS = Number(process.env.MAX_ACTIVATIONS || 3);
 const TOKEN_TTL_DAYS = Number(process.env.TOKEN_TTL_DAYS || 30);
@@ -9,17 +10,53 @@ const now = () => Math.floor(Date.now() / 1000);
 const normEmail = (s) => String(s || "").trim().toLowerCase();
 const normKey = (s) => String(s || "").trim().toUpperCase();
 
+/**
+ * Verifica che una licenza sia ancora "utilizzabile" oggi.
+ * Ritorna { ok: true } oppure { ok: false, error: "..." }.
+ *
+ * Casi gestiti:
+ *  - annual one-time scaduto (expires_at < now)
+ *  - subscription scaduta (current_period_end < now)
+ */
+function checkLicenseValidity(license, t = now()) {
+  if (license.status !== "active") {
+    return { ok: false, error: "Licenza non piu' valida (rimborsata o revocata)." };
+  }
+  if (license.expires_at && Number(license.expires_at) < t) {
+    return { ok: false, error: "L'abbonamento annuale e' scaduto. Riacquista per continuare." };
+  }
+  if (license.current_period_end && Number(license.current_period_end) < t) {
+    return { ok: false, error: "L'abbonamento e' scaduto o e' fallito il rinnovo. Verifica su Lemon Squeezy." };
+  }
+  return { ok: true };
+}
+
 async function issueToken(license, deviceId) {
   const t = now();
-  return signJwt({
+  const plan = planSnapshot(license.plan);
+  const claims = {
     sub: String(license.id),
     key_id: license.license_key,
     email: license.email,
     device_id: deviceId,
     iat: t,
     exp: t + TOKEN_TTL_DAYS * 86400,
-  }, process.env.JWT_SECRET);
+  };
+  if (plan) {
+    claims.plan = plan.code;
+    claims.plan_name = plan.name;
+    claims.daily_limit = plan.daily_limit;
+    claims.features = plan.features;
+    claims.is_subscription = plan.is_subscription;
+  }
+  if (license.expires_at) claims.expires_at = Number(license.expires_at);
+  if (license.current_period_end) claims.period_end = Number(license.current_period_end);
+  return signJwt(claims, process.env.JWT_SECRET);
 }
+
+const LICENSE_COLUMNS =
+  "id, license_key, email, status, plan, daily_limit, " +
+  "subscription_id, current_period_end, expires_at";
 
 export async function activate(req, res) {
   const { key, email, device_id, device_name, app_version } = req.body || {};
@@ -30,15 +67,15 @@ export async function activate(req, res) {
   }
 
   const license = await one(
-    "SELECT id, license_key, email, status FROM licenses WHERE license_key=? AND email=? LIMIT 1",
+    `SELECT ${LICENSE_COLUMNS} FROM licenses
+      WHERE license_key=? AND email=? LIMIT 1`,
     [K, E],
   );
   if (!license) {
     return res.status(404).json({ error: "Chiave o email non corrispondono a un acquisto." });
   }
-  if (license.status !== "active") {
-    return res.status(403).json({ error: "Licenza non piu' valida (rimborsata o revocata)." });
-  }
+  const check = checkLicenseValidity(license);
+  if (!check.ok) return res.status(403).json({ error: check.error });
 
   const t = now();
   const existing = await one(
@@ -71,7 +108,15 @@ export async function activate(req, res) {
   }
 
   const token = await issueToken(license, D);
-  res.json({ token, activated_at: t, email: license.email });
+  const plan = planSnapshot(license.plan);
+  res.json({
+    token,
+    activated_at: t,
+    email: license.email,
+    plan,
+    expires_at: license.expires_at ? Number(license.expires_at) : null,
+    period_end: license.current_period_end ? Number(license.current_period_end) : null,
+  });
 }
 
 export async function validate(req, res) {
@@ -85,12 +130,14 @@ export async function validate(req, res) {
   if (claims.device_id !== D) return res.status(401).json({ error: "device_id mismatch" });
 
   const license = await one(
-    "SELECT id, license_key, email, status FROM licenses WHERE id=?",
+    `SELECT ${LICENSE_COLUMNS} FROM licenses WHERE id=?`,
     [claims.sub],
   );
-  if (!license || license.status !== "active") {
-    return res.status(401).json({ error: "Licenza non attiva" });
-  }
+  if (!license) return res.status(401).json({ error: "Licenza non trovata" });
+
+  const check = checkLicenseValidity(license);
+  if (!check.ok) return res.status(401).json({ error: check.error });
+
   const act = await one(
     "SELECT id, revoked_at FROM activations WHERE license_id=? AND device_id=?",
     [license.id, D],
@@ -105,7 +152,14 @@ export async function validate(req, res) {
   );
 
   const fresh = await issueToken(license, D);
-  res.json({ token: fresh, email: license.email });
+  const plan = planSnapshot(license.plan);
+  res.json({
+    token: fresh,
+    email: license.email,
+    plan,
+    expires_at: license.expires_at ? Number(license.expires_at) : null,
+    period_end: license.current_period_end ? Number(license.current_period_end) : null,
+  });
 }
 
 export async function deactivate(req, res) {
@@ -124,6 +178,24 @@ export async function deactivate(req, res) {
     [now(), claims.sub, D],
   );
   res.json({ ok: true });
+}
+
+/**
+ * Helper interno: dato un token JWT valido, ritorna la riga licenze
+ * fresca dal DB (per quota checks, downloads, ecc.). Ritorna null se
+ * il token e' invalido o la licenza non e' piu' attiva.
+ */
+export async function licenseFromToken(token) {
+  const claims = verifyJwt(String(token || ""), process.env.JWT_SECRET);
+  if (!claims) return null;
+  const lic = await one(
+    `SELECT ${LICENSE_COLUMNS} FROM licenses WHERE id=?`,
+    [claims.sub],
+  );
+  if (!lic) return null;
+  const check = checkLicenseValidity(lic);
+  if (!check.ok) return null;
+  return { license: lic, claims };
 }
 
 // Esposto per uso interno (es. webhook genera chiave nuova)

@@ -28,6 +28,7 @@ import json
 import platform
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from typing import Optional
@@ -140,12 +141,42 @@ def _http_post(path: str, body: dict) -> dict:
 # ============================================================
 # API pubblica
 # ============================================================
+def _plan_snapshot(cfg: dict) -> dict:
+    """Estrae i dati del piano dal config (popolati da activate/validate)."""
+    code = (cfg.get("plan_code") or "").strip()
+    if not code:
+        return {}
+    return {
+        "code": code,
+        "name": (cfg.get("plan_name") or "").strip() or code.title(),
+        "features": list(cfg.get("plan_features") or []),
+        "daily_limit": cfg.get("plan_daily_limit"),  # puo' essere None
+        "is_subscription": bool(cfg.get("plan_is_subscription")),
+        "expires_at": int(cfg.get("plan_expires_at") or 0),
+        "period_end": int(cfg.get("plan_period_end") or 0),
+    }
+
+
+def has_feature(name: str, config: Optional[dict] = None) -> bool:
+    """True se il piano corrente include la feature richiesta."""
+    cfg = config or load_config()
+    plan = _plan_snapshot(cfg)
+    if not plan:
+        return False
+    return name in (plan.get("features") or [])
+
+
+def get_plan(config: Optional[dict] = None) -> dict:
+    """Ritorna il dict del piano corrente, oppure {} se non noto."""
+    return _plan_snapshot(config or load_config())
+
+
 def get_status(config: Optional[dict] = None) -> dict:
     """Ritorna lo stato corrente della licenza per la UI.
 
     Chiavi: licensed (bool), reason (str), email, key, activated_at,
     last_validated_at, days_since_validation, expires_soon (bool),
-    needs_revalidation (bool).
+    needs_revalidation (bool), plan (dict).
     """
     cfg = config or load_config()
     token = (cfg.get("license_token") or "").strip()
@@ -153,6 +184,7 @@ def get_status(config: Optional[dict] = None) -> dict:
     email = (cfg.get("license_email") or "").strip()
     activated = int(cfg.get("license_activated_at") or 0)
     last_val = int(cfg.get("last_validated_at") or 0)
+    plan = _plan_snapshot(cfg)
 
     if not token or not key:
         return {
@@ -164,9 +196,27 @@ def get_status(config: Optional[dict] = None) -> dict:
             "last_validated_at": 0,
             "days_since_validation": 0,
             "needs_revalidation": False,
+            "plan": plan,
         }
 
-    days_since = (_now() - last_val) // 86400 if last_val else 999
+    # Scadenza locale derivata dai claims (best-effort: la verita' e' sul server).
+    t = _now()
+    expires_at = plan.get("expires_at") or 0
+    period_end = plan.get("period_end") or 0
+    if expires_at and expires_at < t:
+        return {
+            "licensed": False, "reason": "plan_expired", "email": email, "key": key,
+            "activated_at": activated, "last_validated_at": last_val,
+            "days_since_validation": 0, "needs_revalidation": True, "plan": plan,
+        }
+    if period_end and period_end < t:
+        return {
+            "licensed": False, "reason": "subscription_expired", "email": email, "key": key,
+            "activated_at": activated, "last_validated_at": last_val,
+            "days_since_validation": 0, "needs_revalidation": True, "plan": plan,
+        }
+
+    days_since = (t - last_val) // 86400 if last_val else 999
     needs_reval = days_since >= LICENSE_REVALIDATE_DAYS
     grace_expired = days_since >= LICENSE_GRACE_DAYS
 
@@ -180,6 +230,7 @@ def get_status(config: Optional[dict] = None) -> dict:
             "last_validated_at": last_val,
             "days_since_validation": days_since,
             "needs_revalidation": True,
+            "plan": plan,
         }
 
     return {
@@ -191,12 +242,62 @@ def get_status(config: Optional[dict] = None) -> dict:
         "last_validated_at": last_val,
         "days_since_validation": days_since,
         "needs_revalidation": needs_reval,
+        "plan": plan,
     }
 
 
 def is_licensed() -> bool:
     """Helper rapido per gating delle azioni."""
     return get_status()["licensed"]
+
+
+def _store_plan_from_response(cfg: dict, resp: dict, token: str) -> None:
+    """Aggiorna il config con i campi del piano estratti dalla risposta API.
+
+    Server risposta puo' contenere:
+      - plan: {code, name, daily_limit, features, is_subscription}
+      - expires_at: epoch (annual)
+      - period_end: epoch (subscription)
+    Come fallback decodifica i claims dal JWT.
+    """
+    plan = resp.get("plan") if isinstance(resp.get("plan"), dict) else None
+    claims = _decode_jwt_claims(token) if token else {}
+
+    code = ""
+    name = ""
+    features = []
+    daily_limit = None
+    is_sub = False
+    if plan:
+        code = (plan.get("code") or "").strip()
+        name = (plan.get("name") or "").strip()
+        features = list(plan.get("features") or [])
+        daily_limit = plan.get("daily_limit")
+        is_sub = bool(plan.get("is_subscription"))
+    else:
+        code = (claims.get("plan") or "").strip()
+        name = (claims.get("plan_name") or "").strip()
+        features = list(claims.get("features") or [])
+        daily_limit = claims.get("daily_limit")
+        is_sub = bool(claims.get("is_subscription"))
+
+    cfg["plan_code"] = code
+    cfg["plan_name"] = name
+    cfg["plan_features"] = features
+    cfg["plan_daily_limit"] = daily_limit  # None ammesso (unlimited)
+    cfg["plan_is_subscription"] = is_sub
+    cfg["plan_expires_at"] = int(resp.get("expires_at") or claims.get("expires_at") or 0)
+    cfg["plan_period_end"] = int(resp.get("period_end") or claims.get("period_end") or 0)
+
+
+def _clear_plan(cfg: dict) -> None:
+    cfg["plan_code"] = ""
+    cfg["plan_name"] = ""
+    cfg["plan_features"] = []
+    cfg["plan_daily_limit"] = None
+    cfg["plan_is_subscription"] = False
+    cfg["plan_expires_at"] = 0
+    cfg["plan_period_end"] = 0
 
 
 def activate(license_key: str, email: str) -> dict:
@@ -231,6 +332,7 @@ def activate(license_key: str, email: str) -> dict:
     cfg["license_token"] = token
     cfg["license_activated_at"] = int(resp.get("activated_at") or now)
     cfg["last_validated_at"] = now
+    _store_plan_from_response(cfg, resp, token)
     save_config(cfg)
     return get_status(cfg)
 
@@ -260,6 +362,7 @@ def validate() -> dict:
         # Server ha risposto 4xx -> token non piu valido
         cfg["license_token"] = ""
         cfg["last_validated_at"] = 0
+        _clear_plan(cfg)
         save_config(cfg)
         return get_status(cfg)
 
@@ -268,6 +371,7 @@ def validate() -> dict:
     if new_token:
         cfg["license_token"] = new_token
     cfg["last_validated_at"] = _now()
+    _store_plan_from_response(cfg, resp, cfg.get("license_token", ""))
     save_config(cfg)
     return get_status(cfg)
 
@@ -298,5 +402,86 @@ def deactivate(release_remote: bool = True) -> dict:
     cfg["license_token"] = ""
     cfg["license_activated_at"] = 0
     cfg["last_validated_at"] = 0
+    _clear_plan(cfg)
     save_config(cfg)
     return get_status(cfg)
+
+
+# ============================================================
+# Quota giornaliera
+# ============================================================
+def _http_json(method: str, path: str, body: Optional[dict] = None,
+               token: Optional[str] = None, timeout: int = 10) -> dict:
+    """Helper unificato per GET/POST con Authorization Bearer."""
+    url = LICENSE_API_URL.rstrip("/") + path
+    data = json.dumps(body).encode("utf-8") if body is not None else None
+    headers = {
+        "User-Agent": f"MusicTools/{VERSION}",
+        "Accept": "application/json",
+    }
+    if data is not None:
+        headers["Content-Type"] = "application/json"
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    req = urllib.request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            raw = resp.read().decode("utf-8")
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        try:
+            err_body = e.read().decode("utf-8")
+            err_data = json.loads(err_body) if err_body else {}
+        except Exception:
+            err_data = {}
+        err_data.setdefault("error", e.reason or f"HTTP {e.code}")
+        err_data["_status"] = e.code
+        return err_data
+    except urllib.error.URLError as e:
+        raise LicenseNetworkError(str(e.reason) if hasattr(e, "reason") else str(e))
+    except (TimeoutError, OSError) as e:
+        raise LicenseNetworkError(str(e))
+
+
+def get_quota_status() -> dict:
+    """Legge lo stato quota dal server. Ritorna dict con plan/used/limit/remaining.
+
+    Solleva LicenseError se il server rifiuta (401/403); LicenseNetworkError
+    in caso di problemi di rete.
+    """
+    cfg = load_config()
+    token = (cfg.get("license_token") or "").strip()
+    if not token:
+        raise LicenseError("Licenza non attivata.")
+    resp = _http_json("GET", "/api/usage/status", token=token)
+    if resp.get("_status") and resp["_status"] >= 400:
+        raise LicenseError(resp.get("error") or "Errore stato quota.")
+    return resp
+
+
+def consume_quota(feature: str = "") -> dict:
+    """Incrementa la quota giornaliera prima di un download.
+
+    Ritorna {allowed, used, limit, remaining, plan, day}.
+    Se il server risponde 429 -> allowed=False (l'utente ha raggiunto il limite).
+    Per i piani unlimited (annual), allowed=True sempre.
+    Solleva LicenseError per 401/403; LicenseNetworkError per problemi di rete.
+    """
+    cfg = load_config()
+    token = (cfg.get("license_token") or "").strip()
+    if not token:
+        raise LicenseError("Licenza non attivata.")
+    body = {"feature": feature} if feature else {}
+    resp = _http_json("POST", "/api/usage/consume", body=body, token=token)
+    status_code = resp.pop("_status", 0)
+    if status_code == 401 or status_code == 403:
+        raise LicenseError(resp.get("error") or "Licenza non valida.")
+    if status_code == 429:
+        # Limite raggiunto, ma e' una risposta strutturata: ritorniamo
+        # il dict cosi' la UI puo' mostrare i numeri.
+        resp.setdefault("allowed", False)
+        return resp
+    if status_code and status_code >= 400:
+        raise LicenseError(resp.get("error") or f"Errore quota ({status_code}).")
+    resp.setdefault("allowed", True)
+    return resp

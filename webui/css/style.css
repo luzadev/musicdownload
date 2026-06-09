@@ -195,6 +195,67 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 
 /* ===============================
+   QUOTA BOX (sidebar)
+   =============================== */
+.quota-box {
+  margin: 10px 8px 0;
+  padding: 10px 12px;
+  background: rgba(29, 185, 84, 0.08);
+  border: 1px solid rgba(29, 185, 84, 0.25);
+  border-radius: 10px;
+  text-align: center;
+}
+.quota-box[hidden] { display: none; }
+.quota-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-3);
+  text-transform: uppercase;
+}
+.quota-value {
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--text);
+  margin: 2px 0;
+}
+.quota-sep { color: var(--text-3); margin: 0 4px; font-weight: 400; }
+.quota-plan {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+.quota-upgrade {
+  margin-top: 8px;
+  background: var(--green);
+  border: none;
+  color: #000;
+  font-weight: 700;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  width: 100%;
+}
+.quota-upgrade[hidden] { display: none; }
+.quota-upgrade:hover { filter: brightness(1.1); }
+
+/* Modal Upgrade — testo prose, non monospace */
+#upgradeModal .modal-body {
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text);
+  white-space: normal;
+}
+#upgradeModal .modal-body p { margin: 0 0 10px; line-height: 1.5; }
+#upgradeModal .modal-body .modal-hint {
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+/* ===============================
    MAIN
    =============================== */
 .main {
