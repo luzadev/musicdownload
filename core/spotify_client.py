@@ -175,3 +175,83 @@ def resolve_spotify_url(token: str, url: str) -> tuple[str, str, list[dict]]:
     else:
         name, tracks = get_playlist_info(token, item_id)
         return "Playlist", name, tracks
+
+
+# ---------------------------------------------------------------------------
+# Fallback senza credenziali (solo per singoli brani)
+# ---------------------------------------------------------------------------
+
+class SpotifyAuthRequired(Exception):
+    """Sollevata quando un URL Spotify richiede le API keys (album/playlist)."""
+
+
+_OG_TITLE_RE = re.compile(
+    r'<meta\s+property="og:title"\s+content="([^"]+)"', re.IGNORECASE,
+)
+_OG_DESC_RE = re.compile(
+    r'<meta\s+property="og:description"\s+content="([^"]+)"', re.IGNORECASE,
+)
+# Tag HTML entities che ci interessano nelle og: (Spotify le scrive cosi').
+_HTML_ENTITIES = {
+    "&amp;": "&", "&#x27;": "'", "&apos;": "'",
+    "&quot;": '"', "&lt;": "<", "&gt;": ">",
+}
+
+
+def _decode_entities(s: str) -> str:
+    for k, v in _HTML_ENTITIES.items():
+        s = s.replace(k, v)
+    return s
+
+
+def resolve_spotify_track_no_auth(url: str) -> tuple[str, str, list[dict]]:
+    """Estrae name/artist da un URL Spotify SENZA credenziali API.
+
+    Funziona solo per brani singoli (open.spotify.com/track/<id>): legge
+    i meta tag og:title e og:description della pagina pubblica.
+
+    Per album/playlist non c'e' modo affidabile senza JS rendering -> alza
+    SpotifyAuthRequired.
+
+    Ritorna ("Brano", name, [{name, artist}]).
+    """
+    kind, _ = detect_url_type(url)
+    if kind != "track":
+        raise SpotifyAuthRequired(
+            f"I link a {kind} richiedono le credenziali Spotify (gratuite). "
+            "Vai in Impostazioni -> Spotify API per configurarle in 2 minuti."
+        )
+
+    try:
+        resp = requests.get(
+            url,
+            headers={"User-Agent": "Mozilla/5.0 (MusicTools)"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+    except requests.RequestException as e:
+        raise ValueError(f"Impossibile leggere il brano da Spotify: {e}") from e
+
+    html = resp.text
+    title_m = _OG_TITLE_RE.search(html)
+    desc_m = _OG_DESC_RE.search(html)
+    if not title_m:
+        raise ValueError("Risposta inattesa da Spotify (meta og:title mancante).")
+
+    name = _decode_entities(title_m.group(1)).strip()
+    artist = ""
+    if desc_m:
+        # Formato osservato: "Artist Name · Song Title · Song · YYYY"
+        # oppure con piu' artisti separati da ", ".
+        parts = [_decode_entities(p).strip() for p in desc_m.group(1).split("·")]
+        if parts:
+            artist = parts[0]
+
+    if not artist:
+        raise ValueError(
+            "Impossibile estrarre l'artista dal brano Spotify senza API keys. "
+            "Configura le credenziali in Impostazioni."
+        )
+
+    track = {"name": name, "artist": artist}
+    return "Brano", name, [track]

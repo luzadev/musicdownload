@@ -20,7 +20,12 @@ from core.downloader import (
     reset_stop as reset_download_stop,
     is_stopped as download_is_stopped,
 )
-from core.spotify_client import get_access_token, resolve_spotify_url
+from core.spotify_client import (
+    get_access_token,
+    resolve_spotify_url,
+    resolve_spotify_track_no_auth,
+    SpotifyAuthRequired,
+)
 from core.metadata import read_metadata, write_metadata, SUPPORTED_EXTS
 from core.recorder import (
     list_input_devices,
@@ -590,14 +595,11 @@ class Api:
         view = "download"
 
         token = None
+        client_id = cfg.get("client_id", "")
+        client_secret = cfg.get("client_secret", "")
+        has_credentials = bool(client_id and client_secret)
         has_spotify = any("spotify.com" in u for u in urls)
-        if has_spotify:
-            client_id = cfg.get("client_id", "")
-            client_secret = cfg.get("client_secret", "")
-            if not client_id or not client_secret:
-                self._log(view, "[ERRORE] Configura Client ID e Client Secret nelle Impostazioni.")
-                self._emit("download:done", {"ok": False})
-                return
+        if has_spotify and has_credentials:
             self._log(view, "[INFO] Autenticazione Spotify...")
             try:
                 token = get_access_token(client_id, client_secret)
@@ -605,6 +607,13 @@ class Api:
                 self._log(view, f"[ERRORE] Autenticazione fallita: {e}")
                 self._emit("download:done", {"ok": False})
                 return
+        elif has_spotify:
+            self._log(
+                view,
+                "[INFO] Spotify API non configurate: i singoli brani "
+                "verranno comunque scaricati via metadata pubblico. "
+                "Per album/playlist servono le credenziali (gratuite, 2 min)."
+            )
 
         for url_idx, url in enumerate(urls):
             if download_is_stopped():
@@ -664,12 +673,19 @@ class Api:
             if is_spotify:
                 self._log(view, "[INFO] Recupero informazioni da Spotify...")
                 try:
-                    label, name, tracks = resolve_spotify_url(token, url)
+                    if token:
+                        label, name, tracks = resolve_spotify_url(token, url)
+                    else:
+                        # Senza API keys: fallback solo per singoli brani.
+                        label, name, tracks = resolve_spotify_track_no_auth(url)
+                except SpotifyAuthRequired as e:
+                    self._log(view, f"[ERRORE] {e}")
+                    continue
                 except Exception as e:
                     self._log(view, f"[ERRORE] {e}")
                     continue
                 self._log(view, f"[INFO] {label}: {name} ({len(tracks)} brani)")
-                dest_dir = os.path.join(output_dir, name)
+                dest_dir = os.path.join(output_dir, name) if len(tracks) > 1 else output_dir
                 download_playlist(tracks, dest_dir, bitrate, cookies_path, progress_cb)
             else:
                 self._log(view, f"[INFO] Download diretto via yt-dlp: {url}")

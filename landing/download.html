@@ -90,6 +90,24 @@
 
     .dl-support { text-align: center; color: var(--text-muted); font-size: 14px; padding-top: 24px; border-top: 1px solid var(--divider); margin-top: 24px; }
     .dl-support a { color: var(--accent); }
+
+    .dl-status {
+      max-width: 460px;
+      margin: -16px auto 24px;
+      padding: 12px 18px;
+      text-align: center;
+      background: rgba(29, 185, 84, 0.08);
+      border: 1px solid rgba(29, 185, 84, 0.25);
+      color: var(--accent);
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .dl-status.err {
+      background: rgba(239, 68, 68, 0.08);
+      border-color: rgba(239, 68, 68, 0.3);
+      color: #f87171;
+    }
   </style>
 </head>
 <body>
@@ -137,7 +155,7 @@
         <div class="dl-os">🍎</div>
         <h2>macOS</h2>
         <p class="meta">macOS 11 Big Sur o successivi · Apple Silicon e Intel</p>
-        <a class="btn btn-primary btn-lg btn-block" id="dlMacBtn" target="_blank" rel="noopener">
+        <a class="btn btn-primary btn-lg btn-block dl-btn" id="dlMacBtn" data-platform="macos">
           Scarica per Mac
         </a>
       </article>
@@ -146,11 +164,13 @@
         <div class="dl-os">🪟</div>
         <h2>Windows</h2>
         <p class="meta">Windows 10 e 11 · 64-bit</p>
-        <a class="btn btn-primary btn-lg btn-block" id="dlWinBtn" target="_blank" rel="noopener">
+        <a class="btn btn-primary btn-lg btn-block dl-btn" id="dlWinBtn" data-platform="windows">
           Scarica per Windows
         </a>
       </article>
     </div>
+
+    <p id="dlStatus" class="dl-status" hidden></p>
 
     <div class="dl-steps">
       <h2>Installazione macOS</h2>
@@ -184,19 +204,47 @@
       return url.searchParams.get(name) || "";
     }
 
-    function setDownloadLinks(email, key) {
-      const q = "key=" + encodeURIComponent(key) + "&email=" + encodeURIComponent(email);
-      document.getElementById("dlMacBtn").href = "/api/download/macos?" + q;
-      document.getElementById("dlWinBtn").href = "/api/download/windows?" + q;
+    // Stato corrente — popolato da URL o dal form submit.
+    const dl = { email: "", key: "" };
+
+    function setStatus(text, isError) {
+      const el = document.getElementById("dlStatus");
+      if (!text) { el.hidden = true; el.textContent = ""; return; }
+      el.textContent = text;
+      el.classList.toggle("err", !!isError);
+      el.hidden = false;
+    }
+
+    function showDownloadCards(email, key) {
+      dl.email = email;
+      dl.key = key;
       document.getElementById("dlGrid").hidden = false;
       document.getElementById("dlForm").hidden = true;
     }
 
-    // Se arrivi dall'email con ?key=&email= mostra subito i bottoni
+    // Click sui bottoni: naviga sulla stessa tab verso /api/download/:platform.
+    // Il server fa 302 con Content-Disposition: attachment -> il browser
+    // scarica il file e la pagina /download resta visibile.
+    document.querySelectorAll(".dl-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (!dl.email || !dl.key) {
+          setStatus("Inserisci email e chiave prima di scaricare.", true);
+          return;
+        }
+        const platform = btn.dataset.platform;
+        const q = "key=" + encodeURIComponent(dl.key) +
+                  "&email=" + encodeURIComponent(dl.email);
+        setStatus("Avvio del download in corso… il file si apre fra qualche secondo.");
+        window.location.href = "/api/download/" + platform + "?" + q;
+      });
+    });
+
+    // Se arrivi dall'email con ?key=&email= mostra subito i bottoni.
     const urlKey = getParam("key");
     const urlEmail = getParam("email");
     if (urlKey && urlEmail) {
-      setDownloadLinks(urlEmail, urlKey);
+      showDownloadCards(urlEmail, urlKey);
     }
 
     // Form submit
@@ -204,10 +252,11 @@
       const email = document.getElementById("dlEmail").value.trim();
       const key = document.getElementById("dlKey").value.trim();
       if (!email || !key) {
-        alert("Inserisci email e chiave di licenza.");
+        setStatus("Inserisci email e chiave di licenza.", true);
         return;
       }
-      setDownloadLinks(email, key);
+      setStatus("");
+      showDownloadCards(email, key);
     });
 
     // Enter dentro i campi
