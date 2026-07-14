@@ -49,6 +49,16 @@
   --text-2: #B3B3B3;
   --text-3: #727272;
 
+  /* Varianti brand per uso come TESTO (foreground). In dark restano vibranti
+     come le base; in light diventano scure per contrasto AA su sfondo bianco. */
+  --green-text: var(--green);
+  --blue-text: var(--blue);
+  --purple-text: var(--purple);
+  --pink-text: var(--pink);
+  --amber-text: var(--amber);
+  --indigo-text: var(--indigo);
+  --rec-red-text: var(--rec-red);
+
   --r-sm: 8px;
   --r-md: 12px;
   --r-lg: 14px;
@@ -83,6 +93,15 @@ html[data-theme="light"] {
   --amber-dim: #FDE68A;
   --rec-red-dim: #FECACA;
   --indigo-dim: #C7D2FE;
+
+  /* Varianti brand per testo: scurite per contrasto AA su fondo bianco */
+  --green-text: #0F7A38;
+  --blue-text: #1D6BD3;
+  --purple-text: #7E22CE;
+  --pink-text: #BE185D;
+  --amber-text: #B45309;
+  --indigo-text: #4338CA;
+  --rec-red-text: #B91C1C;
 
   --shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
   --shadow-lg: 0 16px 40px rgba(15, 23, 42, 0.1);
@@ -192,13 +211,13 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 
 .nav-item:hover {
-  background: #1A1A1A;
+  background: var(--bg-card-2);
   color: var(--text);
 }
 
 .nav-item.active {
-  background: #1F1F1F;
-  color: var(--green);
+  background: var(--bg-card-2);
+  color: var(--green-text);
 }
 
 .nav-icon {
@@ -214,7 +233,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 
 .footer-by {
-  color: var(--green);
+  color: var(--green-text);
   font-weight: 700;
   font-size: 12px;
   letter-spacing: 0.4px;
@@ -254,7 +273,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .quota-sep { color: var(--text-3); margin: 0 4px; font-weight: 400; }
 .quota-plan {
   font-size: 11px;
-  color: var(--green);
+  color: var(--green-text);
   font-weight: 700;
   letter-spacing: 0.5px;
   text-transform: uppercase;
@@ -469,7 +488,7 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 
 .badge {
   background: rgba(29, 185, 84, 0.15);
-  color: var(--green);
+  color: var(--green-text);
   padding: 2px 8px;
   border-radius: 10px;
   font-size: 11px;
@@ -495,8 +514,8 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 .input::placeholder { color: var(--text-3); }
 
 .input:focus {
-  background: #333;
-  border-color: rgba(29, 185, 84, 0.4);
+  background: var(--bg-input-hover);
+  border-color: var(--green);
 }
 
 .input-sm { max-width: 200px; }
@@ -663,8 +682,8 @@ input[type="number"]::-webkit-inner-spin-button {
   font-weight: 800;
 }
 
-.percent.green { color: var(--green); }
-.percent.blue { color: var(--blue); }
+.percent.green { color: var(--green-text); }
+.percent.blue { color: var(--blue-text); }
 .percent.pink { color: var(--pink-hover); }
 
 .progress {
@@ -711,10 +730,10 @@ input[type="number"]::-webkit-inner-spin-button {
   line-height: 1.6;
 }
 
-.log .l-ok { color: var(--green); }
+.log .l-ok { color: var(--green-text); }
 .log .l-err { color: var(--red); }
-.log .l-info { color: var(--blue); }
-.log .l-warn { color: #FDCB6E; }
+.log .l-info { color: var(--blue-text); }
+.log .l-warn { color: var(--amber-text); }
 .log .l-muted { color: var(--text-3); }
 
 /* ===============================
@@ -774,7 +793,7 @@ input[type="number"]::-webkit-inner-spin-button {
 .hint strong { color: var(--text); font-weight: 700; }
 
 .hint code {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--bg-input);
   padding: 1px 6px;
   border-radius: 4px;
   font-family: "SF Mono", Menlo, Consolas, monospace;
@@ -838,7 +857,7 @@ input[type="number"]::-webkit-inner-spin-button {
    INFO ROW (Upgrade tab)
    =============================== */
 .info-row {
-  color: var(--green);
+  color: var(--green-text);
   font-size: 13px;
   font-weight: 700;
   margin-bottom: 14px;
@@ -862,7 +881,7 @@ input[type="number"]::-webkit-inner-spin-button {
   min-height: 18px;
 }
 
-.update-status.ok { color: var(--green); }
+.update-status.ok { color: var(--green-text); }
 .update-status.warn { color: #FDCB6E; }
 .update-status.err { color: var(--red); }
 
@@ -893,7 +912,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .save-status {
-  color: var(--green);
+  color: var(--green-text);
   font-weight: 700;
   font-size: 13px;
   opacity: 0;
@@ -1003,7 +1022,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .toast.toast-error { border-color: var(--red); color: var(--red); }
-.toast.toast-success { border-color: var(--green); color: var(--green); }
+.toast.toast-success { border-color: var(--green); color: var(--green-text); }
 
 /* ===============================
    SCROLLBARS (WebKit)
@@ -1011,11 +1030,11 @@ input[type="number"]::-webkit-inner-spin-button {
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: #404040;
+  background: var(--text-3);
   border-radius: 5px;
   border: 2px solid var(--bg);
 }
-::-webkit-scrollbar-thumb:hover { background: #606060; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-2); }
 
 .log::-webkit-scrollbar-thumb { border-color: var(--bg-card-2); }
 .main::-webkit-scrollbar-thumb { border-color: var(--bg); }
@@ -1581,7 +1600,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .beatport-status.loading { color: var(--text-3); font-style: italic; }
 .beatport-status.error   { color: var(--red); font-weight: 600; }
-.beatport-status.ok      { color: var(--green); font-weight: 600; }
+.beatport-status.ok      { color: var(--green-text); font-weight: 600; }
 
 .beatport-output-info {
   margin-top: 6px;
@@ -1592,7 +1611,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .beatport-output-info.warn {
-  color: var(--amber-hover);
+  color: var(--amber-text);
   font-family: inherit;
 }
 
@@ -1635,7 +1654,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .beatport-table tbody tr:hover {
-  background: rgba(99, 102, 241, 0.06);
+  background: var(--bg-input);
 }
 
 .beatport-table tbody tr.already-downloaded td {
@@ -1643,7 +1662,7 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .beatport-table tbody tr.already-downloaded .col-state {
-  color: var(--green);
+  color: var(--green-text);
   font-weight: 600;
 }
 
