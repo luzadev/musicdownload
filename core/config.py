@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.7.15"
+VERSION = "v1.8.0"
 
 
 APP_NAME = "MusicTools"
@@ -70,6 +70,8 @@ DEFAULTS = {
     "cookies_path": str(_project_dir / "cookies.txt"),
     "output_dir": str(_project_dir / "MUSICA"),
     "theme": "dark",
+    # ---- Beatport ----
+    "beatport_last_genre": "melodic-house-techno",  # ultimo genere Top 100 caricato
     # ---- Licenza ----
     "license_key": "",          # chiave fornita all'utente via email
     "license_email": "",        # email associata all'acquisto
