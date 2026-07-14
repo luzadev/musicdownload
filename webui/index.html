@@ -29,6 +29,10 @@
           <span class="nav-icon">🎬</span>
           <span>Video</span>
         </button>
+        <button class="nav-item" data-view="beatport" data-feature="audio">
+          <span class="nav-icon">🎧</span>
+          <span>Beatport</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -846,6 +850,63 @@
             </section>
 
           </article>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: BEATPORT ===== -->
+      <section class="view" id="view-beatport">
+        <header class="hero hero-indigo">
+          <div class="hero-content">
+            <div class="hero-eyebrow indigo">BEATPORT CHARTS</div>
+            <h1 class="hero-title">Top 100 per genere</h1>
+            <p class="hero-subtitle">Sfoglia la Top 100 di Beatport, seleziona i brani e scaricali via YouTube</p>
+          </div>
+          <div class="hero-deco">🎧</div>
+        </header>
+
+        <h2 class="section-label">Genere</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <select id="beatport-genre" class="input pill"></select>
+            <button class="btn btn-primary pill" id="beatport-load-btn">
+              <span class="ico">↓</span> Carica Top 100
+            </button>
+            <span class="hint-inline">Shift+click per bypassare la cache</span>
+          </div>
+          <div id="beatport-status" class="beatport-status"></div>
+          <div id="beatport-output-info" class="beatport-output-info"></div>
+        </div>
+
+        <div class="card beatport-table-card">
+          <div class="beatport-table-wrap">
+            <table id="beatport-table" class="beatport-table" hidden>
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="beatport-select-all" /></th>
+                  <th class="col-pos">#</th>
+                  <th>Artista</th>
+                  <th>Titolo (Mix)</th>
+                  <th class="col-dur">Durata</th>
+                  <th class="col-state">Stato</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="beatport-toolbar" id="beatport-toolbar" hidden>
+            <span class="counter" id="beatport-selected-count">0/0 selezionati</span>
+            <button class="btn btn-primary pill" id="beatport-download-btn" disabled>
+              <span class="ico">▶</span> Scarica selezionati
+            </button>
+            <button class="btn btn-danger pill" id="beatport-stop-btn" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="beatport-log"></div>
         </div>
       </section>
 

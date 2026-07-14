@@ -8,9 +8,12 @@ import re
 import threading
 import time
 import webbrowser
+from dataclasses import asdict
+from pathlib import Path
 from typing import Any, Optional
 
 from core.config import load_config, save_config, VERSION, LICENSE_API_URL
+from core import beatport
 from core import license as license_mod
 from core.downloader import (
     download_playlist,
@@ -903,3 +906,103 @@ class Api:
             })
 
         self._emit("video:done", {"ok": True})
+
+    # ================================================================
+    # Beatport charts
+    # ================================================================
+    def beatport_genres(self) -> list:
+        """Lista dei generi disponibili per il dropdown UI."""
+        return beatport.list_genres()
+
+    def beatport_fetch_chart(self, slug: str, force_refresh: bool = False) -> dict:
+        """Fetches la Top 100 per il genere. Salva anche l'ultimo genere in config.
+        Ritorna {ok: True, tracks: [...]} oppure {ok: False, error, message}."""
+        # Memoria: ricorda l'ultimo genere usato
+        try:
+            cfg = load_config()
+            cfg["beatport_last_genre"] = slug
+            save_config(cfg)
+        except Exception:
+            pass
+
+        try:
+            tracks = beatport.fetch_top100(slug, force_refresh=force_refresh)
+        except ValueError as e:
+            return {"ok": False, "error": "invalid_genre", "message": str(e)}
+        except beatport.BeatportUnreachableError as e:
+            return {"ok": False, "error": "unreachable", "message": str(e)}
+        except beatport.BeatportParseError as e:
+            return {"ok": False, "error": "parse", "message": str(e)}
+
+        return {"ok": True, "tracks": [asdict(t) for t in tracks]}
+
+    def _beatport_output_dir(self, out_root: str, genre_name: str) -> Path:
+        """Calcola la cartella dove finiscono i file Beatport.
+        Coerente col comportamento di `start_tracks_download`, che sanitizza
+        gli slash nel subfolder (`/` -> `_`), quindi `Beatport/<genre>`
+        diventa flat: `Beatport_<genre>`."""
+        safe_genre = genre_name.replace("/", "_").replace("\\", "_").strip()
+        subfolder = f"Beatport_{safe_genre}" if safe_genre else "Beatport"
+        return Path(out_root) / subfolder
+
+    def beatport_check_existing(self, tracks: list, genre_name: str) -> list:
+        """Per ogni track ritorna True se il file esiste gia' nella cartella
+        di output Beatport (stessa dove `beatport_download_selected` scrive).
+        Match euristico: nel filename (senza extension) devono comparire sia
+        il titolo che il primo artista (case-insensitive)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return [False] * len(tracks)
+
+        out_dir = self._beatport_output_dir(out_root, genre_name)
+        if not out_dir.exists():
+            return [False] * len(tracks)
+
+        existing_stems = [p.stem.lower() for p in out_dir.glob("*.mp3")]
+        result = []
+        for t in tracks:
+            title = (t.get("title") or "").lower().strip()
+            artists = (t.get("artists") or "")
+            first_artist = artists.split(",")[0].split("&")[0].strip().lower()
+            if not title or not first_artist:
+                result.append(False)
+                continue
+            found = any(
+                (title in stem and first_artist in stem)
+                for stem in existing_stems
+            )
+            result.append(found)
+        return result
+
+    def beatport_download_selected(self, tracks: list, genre_name: str) -> dict:
+        """Converte i BeatportTrack in tracklist compatibile con start_tracks_download
+        e lancia il download riusando l'infrastruttura esistente (license gate,
+        skip file gia' scaricati, log su canale 'download', ecc.)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        # Sfrutta lo stesso computed path del check_existing per garantire
+        # che i due metodi restino allineati (senza affidarsi a start_tracks_download
+        # per la sanitizzazione).
+        target_dir = self._beatport_output_dir(out_root, genre_name)
+        subfolder = target_dir.name  # es. "Beatport_melodic-house-techno"
+
+        converted = []
+        for t in tracks:
+            title = (t.get("title") or "").strip()
+            artists = (t.get("artists") or "").strip()
+            if not title:
+                continue
+            converted.append({"name": title, "artist": artists})
+
+        if not converted:
+            return {"ok": False, "error": "Nessun brano valido"}
+
+        return self.start_tracks_download({
+            "tracks": converted,
+            "output_dir": out_root,
+            "subfolder": subfolder,
+        })
