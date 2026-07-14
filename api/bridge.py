@@ -936,17 +936,26 @@ class Api:
 
         return {"ok": True, "tracks": [asdict(t) for t in tracks]}
 
+    def _beatport_output_dir(self, out_root: str, genre_name: str) -> Path:
+        """Calcola la cartella dove finiscono i file Beatport.
+        Coerente col comportamento di `start_tracks_download`, che sanitizza
+        gli slash nel subfolder (`/` -> `_`), quindi `Beatport/<genre>`
+        diventa flat: `Beatport_<genre>`."""
+        safe_genre = genre_name.replace("/", "_").replace("\\", "_").strip()
+        subfolder = f"Beatport_{safe_genre}" if safe_genre else "Beatport"
+        return Path(out_root) / subfolder
+
     def beatport_check_existing(self, tracks: list, genre_name: str) -> list:
-        """Per ogni track ritorna True se il file esiste gia' in output_dir/Beatport/<genre_name>/.
-        Match euristico: nel filename (senza extension) devono comparire sia il titolo
-        che il primo artista (case-insensitive)."""
+        """Per ogni track ritorna True se il file esiste gia' nella cartella
+        di output Beatport (stessa dove `beatport_download_selected` scrive).
+        Match euristico: nel filename (senza extension) devono comparire sia
+        il titolo che il primo artista (case-insensitive)."""
         cfg = load_config()
         out_root = (cfg.get("output_dir") or "").strip()
         if not out_root:
             return [False] * len(tracks)
 
-        safe_name = genre_name.replace("/", "_").replace("\\", "_").strip()
-        out_dir = Path(out_root) / "Beatport" / safe_name
+        out_dir = self._beatport_output_dir(out_root, genre_name)
         if not out_dir.exists():
             return [False] * len(tracks)
 
@@ -975,8 +984,11 @@ class Api:
         if not out_root:
             return {"ok": False, "error": "Cartella output non impostata"}
 
-        safe_genre = genre_name.replace("/", "_").replace("\\", "_").strip()
-        subfolder = f"Beatport/{safe_genre}" if safe_genre else "Beatport"
+        # Sfrutta lo stesso computed path del check_existing per garantire
+        # che i due metodi restino allineati (senza affidarsi a start_tracks_download
+        # per la sanitizzazione).
+        target_dir = self._beatport_output_dir(out_root, genre_name)
+        subfolder = target_dir.name  # es. "Beatport_melodic-house-techno"
 
         converted = []
         for t in tracks:
