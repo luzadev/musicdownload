@@ -544,6 +544,40 @@ class Api:
         self._download_thread.start()
         return {"ok": True}
 
+    def start_urls_download(self, payload: dict) -> dict:
+        """Analogo a start_tracks_download ma accetta URL YouTube gia noti
+        (bypass search). Usato dal flow del tab 'YouTube Search'."""
+        if self._any_job_running():
+            return {"ok": False, "error": "Un download gia in corso"}
+
+        urls = payload.get("urls") or []
+        titles = payload.get("titles") or []
+        output_dir = (payload.get("output_dir") or "").strip()
+        subfolder = (payload.get("subfolder") or "").strip()
+        if not urls:
+            return {"ok": False, "error": "Nessuna URL fornita"}
+        if len(urls) != len(titles):
+            return {"ok": False, "error": "urls e titles devono avere stessa lunghezza"}
+        if not output_dir:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        if subfolder:
+            safe = subfolder.replace("/", "_").replace("\\", "_").strip()
+            if safe:
+                output_dir = os.path.join(output_dir, safe)
+
+        gate = self._gate("audio")
+        if gate:
+            return gate
+
+        self._download_thread = threading.Thread(
+            target=self._urls_worker,
+            args=(list(urls), list(titles), output_dir),
+            daemon=True,
+        )
+        self._download_thread.start()
+        return {"ok": True}
+
     def stop_download(self) -> dict:
         request_download_stop()
         self._log("download", "[INFO] Interruzione richiesta...")
@@ -599,6 +633,53 @@ class Api:
             self._emit("download:progress", payload_evt)
 
         download_playlist(tracks, output_dir, bitrate, cookies_path, progress_cb)
+        self._emit("download:done", {"ok": True})
+
+    def _urls_worker(self, urls: list, titles: list, output_dir: str) -> None:
+        from core.downloader import download_urls
+        reset_download_stop()
+        cfg = load_config()
+        bitrate = cfg.get("bitrate", "320K")
+        cookies_path = cfg.get("cookies_path", "")
+        view = "download"
+
+        self._log(view, f"[INFO] URL list: {len(urls)} da scaricare da YouTube")
+        self._log(view, f"[INFO] Destinazione: {output_dir}")
+
+        _last = [0.0]
+        _THROTTLE = 0.10
+
+        def progress_cb(idx, total, title, status, pct):
+            if status == "downloading":
+                now = time.monotonic()
+                if now - _last[0] < _THROTTLE:
+                    return
+                _last[0] = now
+
+            payload_evt = {
+                "idx": idx, "total": total, "track": title,
+                "status": status, "pct": pct,
+                "url_idx": 0, "url_total": 1,
+            }
+            if status == "skipped":
+                self._log(view, f"[SKIP] {title} (gia scaricato)")
+                payload_evt["overall"] = min((idx + 1) / total, 1.0) if total else 1
+            elif status == "downloading":
+                payload_evt["overall"] = min((idx / total) + (pct / 100 / total), 1.0) if total else 0
+            elif status == "done":
+                self._log(view, f"[OK] {title}")
+                payload_evt["overall"] = min((idx + 1) / total, 1.0) if total else 1
+            elif status == "stopped":
+                self._log(view, "[INFO] Download interrotto.")
+            elif status == "completed":
+                payload_evt["overall"] = 1.0
+                self._log(view, "[INFO] Download completato!")
+            elif status.startswith("error"):
+                self._log(view, f"[ERRORE] {title}: {status}")
+
+            self._emit("download:progress", payload_evt)
+
+        download_urls(urls, titles, output_dir, bitrate, cookies_path, progress_cb)
         self._emit("download:done", {"ok": True})
 
     def _download_worker(self, urls: list, output_dir: str) -> None:

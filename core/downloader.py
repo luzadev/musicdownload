@@ -399,6 +399,125 @@ def download_direct_url(
         progress_callback(total, total, "", "completed", 100)
 
 
+def download_urls(
+    urls: list,
+    titles: list,
+    output_dir: str,
+    bitrate: str = "320K",
+    cookies_path: Optional[str] = None,
+    progress_callback: Optional[Callable] = None,
+) -> None:
+    """Scarica direttamente da URL YouTube (bypassa search).
+
+    Usa gli stessi flag yt-dlp di download_playlist. La differenza e che
+    salta lo step di ricerca perche l'URL e gia noto (usato dal flow del
+    tab "YouTube Search" dopo che l'utente ha selezionato i risultati).
+
+    Args:
+        urls: lista URL YouTube (parallela a titles)
+        titles: lista titoli video (per logging/dedupe)
+        output_dir: cartella destinazione
+        bitrate: qualita audio (default 320K)
+        cookies_path: file cookies opzionale
+        progress_callback: callback(idx, total, title, status, percent)
+    """
+    global _current_process
+    reset_stop()
+    total = len(urls)
+    out_path = Path(output_dir)
+    out_path.mkdir(parents=True, exist_ok=True)
+    done_file = out_path / ".downloaded_tracks"
+    done_set = _load_done_set(done_file)
+    existing_files = _scan_existing_files(out_path)
+    ytdlp = find_ytdlp()
+
+    for i, (url, title) in enumerate(zip(urls, titles)):
+        if is_stopped():
+            if progress_callback:
+                progress_callback(i, total, "", "stopped", 0)
+            return
+
+        key = title or url
+
+        # Salta se gia scaricato (file di tracking)
+        if key in done_set:
+            if progress_callback:
+                progress_callback(i, total, key, "skipped", 100)
+            continue
+
+        # Salta se esiste gia un file corrispondente nella cartella
+        if title and _file_exists_for_query(title, existing_files):
+            _mark_done(done_file, key)
+            done_set.add(key)
+            if progress_callback:
+                progress_callback(i, total, key, "skipped", 100)
+            continue
+
+        if progress_callback:
+            progress_callback(i, total, key, "downloading", 0)
+
+        cmd = [
+            ytdlp,
+            "--extract-audio",
+            "--audio-format", "mp3",
+            "--audio-quality", bitrate.rstrip("Kk"),
+            "--embed-thumbnail",
+            "--add-metadata",
+            "--no-check-certificates",
+            "--newline",
+            "--output", str(Path(output_dir) / "%(title)s.%(ext)s"),
+            url,
+        ]
+        ffmpeg_dir = find_ffmpeg_dir()
+        if ffmpeg_dir:
+            cmd.extend(["--ffmpeg-location", ffmpeg_dir])
+        if cookies_path and Path(cookies_path).exists():
+            cmd.extend(["--cookies", cookies_path])
+
+        try:
+            with _process_lock:
+                _current_process = subprocess.Popen(
+                    cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+                    **subprocess_flags(),
+                )
+
+            for line in _current_process.stdout:
+                if is_stopped():
+                    _current_process.terminate()
+                    if progress_callback:
+                        progress_callback(i, total, key, "stopped", 0)
+                    return
+
+                pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
+                if pct_match and progress_callback:
+                    pct = int(float(pct_match.group(1)))
+                    progress_callback(i, total, key, "downloading", pct)
+
+            return_code = _current_process.wait()
+
+            with _process_lock:
+                _current_process = None
+
+            if return_code == 0:
+                _mark_done(done_file, key)
+                done_set.add(key)
+                existing_files = _scan_existing_files(out_path)
+                if progress_callback:
+                    progress_callback(i, total, key, "done", 100)
+            else:
+                if progress_callback:
+                    progress_callback(i, total, key, f"error: yt-dlp exit {return_code}", 0)
+
+        except Exception as e:
+            with _process_lock:
+                _current_process = None
+            if progress_callback:
+                progress_callback(i, total, key, f"error: {e}", 0)
+
+    if progress_callback and not is_stopped():
+        progress_callback(total, total, "", "completed", 100)
+
+
 def _video_format(quality: str) -> str:
     """Costruisce la format string yt-dlp per la qualita richiesta."""
     if not quality or quality == "best":
