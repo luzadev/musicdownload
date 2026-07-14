@@ -7,6 +7,8 @@ Vedi docs/superpowers/specs/2026-07-14-beatport-charts-design.md.
 
 from __future__ import annotations
 
+import json
+import re
 from dataclasses import dataclass
 
 
@@ -31,6 +33,35 @@ class BeatportTrack:
         """Query pura per la search Spotify (senza mix name, che disturba
         il matching su titoli tipo 'Extended Mix')."""
         return f"{self.artists} {self.title}"
+
+
+class BeatportError(Exception):
+    """Base per errori Beatport."""
+
+
+class BeatportUnreachableError(BeatportError):
+    """Rete o server Beatport non raggiungibile / 5xx."""
+
+
+class BeatportParseError(BeatportError):
+    """HTML/JSON ricevuto ma non conforme allo schema atteso."""
+
+
+_NEXT_DATA_RE = re.compile(
+    r'<script id="__NEXT_DATA__"[^>]*>(.+?)</script>',
+    re.DOTALL,
+)
+
+
+def _extract_next_data(html: str) -> dict:
+    """Estrae il payload JSON dallo script <__NEXT_DATA__> di Next.js."""
+    m = _NEXT_DATA_RE.search(html)
+    if not m:
+        raise BeatportParseError("__NEXT_DATA__ non trovato nella pagina Beatport")
+    try:
+        return json.loads(m.group(1))
+    except json.JSONDecodeError as e:
+        raise BeatportParseError(f"__NEXT_DATA__ JSON malformato: {e}") from e
 
 
 # Mappa slug URL Beatport -> (numeric_id, display_name)

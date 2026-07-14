@@ -66,3 +66,20 @@ class TestBeatportTrack:
         )
         with pytest.raises(Exception):
             t.title = "Z"  # frozen=True impedisce mutazione
+
+
+class TestExtractNextData:
+    def test_extracts_json_from_valid_html(self, fixtures_dir):
+        html = (fixtures_dir / "beatport_melodic_top100.html").read_text()
+        data = beatport._extract_next_data(html)
+        assert isinstance(data, dict)
+        assert "props" in data
+
+    def test_missing_script_raises(self):
+        with pytest.raises(beatport.BeatportParseError, match="__NEXT_DATA__ non trovato"):
+            beatport._extract_next_data("<html><body>nulla</body></html>")
+
+    def test_malformed_json_raises(self):
+        broken = '<script id="__NEXT_DATA__" type="application/json">{not: valid}</script>'
+        with pytest.raises(beatport.BeatportParseError, match="JSON malformato"):
+            beatport._extract_next_data(broken)
