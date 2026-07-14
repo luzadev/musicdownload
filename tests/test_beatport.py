@@ -111,3 +111,80 @@ class TestParseTracks:
     def test_schema_missing_results_raises(self):
         with pytest.raises(beatport.BeatportParseError, match="results"):
             beatport._parse_tracks({"props": {"pageProps": {}}})
+
+
+from unittest.mock import patch, MagicMock
+
+from freezegun import freeze_time
+
+
+def _mock_response(text: str, status_code: int = 200) -> MagicMock:
+    resp = MagicMock()
+    resp.text = text
+    resp.status_code = status_code
+    def _raise():
+        if status_code >= 400:
+            raise Exception(f"HTTP {status_code}")
+    resp.raise_for_status = _raise
+    return resp
+
+
+class TestFetchTop100:
+    @pytest.fixture
+    def fixture_html(self, fixtures_dir):
+        return (fixtures_dir / "beatport_melodic_top100.html").read_text()
+
+    def test_success_returns_100_tracks(self, fixture_html):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response(fixture_html, 200)
+            tracks = beatport.fetch_top100("melodic-house-techno")
+        assert len(tracks) == 100
+
+    def test_invalid_slug_raises_value_error(self):
+        with pytest.raises(ValueError, match="slug"):
+            beatport.fetch_top100("not-a-real-genre")
+
+    def test_5xx_retries_and_raises_unreachable(self):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response("", 503)
+            with patch("core.beatport.time.sleep"):  # skip backoff
+                with pytest.raises(beatport.BeatportUnreachableError):
+                    beatport.fetch_top100("melodic-house-techno")
+            assert mock_get.call_count == 3  # 1 + 2 retry
+
+    def test_cache_hit_within_ttl(self, fixture_html):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response(fixture_html, 200)
+            beatport.fetch_top100("melodic-house-techno")
+            beatport.fetch_top100("melodic-house-techno")
+            assert mock_get.call_count == 1
+
+    def test_cache_expires_after_ttl(self, fixture_html):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response(fixture_html, 200)
+            with freeze_time("2026-01-01 10:00:00") as frozen:
+                beatport.fetch_top100("melodic-house-techno")
+                frozen.tick(delta=beatport._CACHE_TTL_SEC + 1)
+                beatport.fetch_top100("melodic-house-techno")
+            assert mock_get.call_count == 2
+
+    def test_force_refresh_bypasses_cache(self, fixture_html):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response(fixture_html, 200)
+            beatport.fetch_top100("melodic-house-techno")
+            beatport.fetch_top100("melodic-house-techno", force_refresh=True)
+            assert mock_get.call_count == 2
+
+    def test_uses_chrome_impersonation(self, fixture_html):
+        beatport._cache.clear()
+        with patch("core.beatport._cffi_requests.get") as mock_get:
+            mock_get.return_value = _mock_response(fixture_html, 200)
+            beatport.fetch_top100("melodic-house-techno")
+            call_kwargs = mock_get.call_args.kwargs
+            assert "impersonate" in call_kwargs
+            assert call_kwargs["impersonate"].startswith("chrome")

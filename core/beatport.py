@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
+
+from curl_cffi import requests as _cffi_requests
 
 
 @dataclass(frozen=True)
@@ -166,3 +169,65 @@ def _parse_tracks(data: dict) -> list:
             raise BeatportParseError(f"track[{i}] shape inattesa: {e}") from e
         out.append(track)
     return out
+
+
+_IMPERSONATE = "chrome131"  # aggiorna se CF rompe il fingerprint
+_REQUEST_TIMEOUT = 15
+_MAX_ATTEMPTS = 3
+_BACKOFF_SEC = [1, 3]  # attese fra tentativi
+_CACHE_TTL_SEC = 15 * 60
+
+# Cache in-memory: slug → (timestamp_epoch, list[BeatportTrack])
+_cache: dict = {}
+
+
+def _url_for(slug: str) -> str:
+    gid, _ = GENRES[slug]
+    return f"https://www.beatport.com/genre/{slug}/{gid}/top-100"
+
+
+def _do_get(url: str) -> str:
+    """GET con retry e backoff. Solleva BeatportUnreachableError su fallimento definitivo."""
+    last_exc = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            resp = _cffi_requests.get(
+                url,
+                impersonate=_IMPERSONATE,
+                timeout=_REQUEST_TIMEOUT,
+            )
+            if resp.status_code >= 500 or resp.status_code == 403:
+                raise Exception(f"HTTP {resp.status_code}")
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:
+            last_exc = e
+            if attempt < _MAX_ATTEMPTS - 1:
+                time.sleep(_BACKOFF_SEC[attempt])
+    raise BeatportUnreachableError(f"Beatport irraggiungibile dopo {_MAX_ATTEMPTS} tentativi: {last_exc}")
+
+
+def fetch_top100(slug: str, force_refresh: bool = False) -> list:
+    """Fetches la Top 100 Beatport per il genere dato.
+
+    Cache in-memory 15 min. `force_refresh=True` bypassa la cache.
+
+    Raises:
+        ValueError: se slug non è in GENRES.
+        BeatportUnreachableError: rete/5xx dopo i retry.
+        BeatportParseError: HTML/JSON non conforme allo schema.
+    """
+    if slug not in GENRES:
+        raise ValueError(f"slug genere non valido: {slug!r}")
+
+    now = time.time()
+    if not force_refresh:
+        cached = _cache.get(slug)
+        if cached and (now - cached[0]) < _CACHE_TTL_SEC:
+            return cached[1]
+
+    html = _do_get(_url_for(slug))
+    data = _extract_next_data(html)
+    tracks = _parse_tracks(data)
+    _cache[slug] = (now, tracks)
+    return tracks
