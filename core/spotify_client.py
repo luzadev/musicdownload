@@ -280,3 +280,37 @@ def search_track(token: str, query: str):
         "name": t.get("name", ""),
         "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
     }
+
+
+def search_tracks(token: str, query: str, limit: int = 50) -> list:
+    """Cerca brani su Spotify e ritorna una lista di dict.
+
+    Args:
+        token: access token Spotify
+        query: query libera (titolo, artista, misto)
+        limit: max risultati (Spotify cap = 50)
+
+    Returns:
+        list[dict] con {id, url, name, artists, album, duration_sec}. Vuota se nessun match.
+    """
+    resp = requests.get(
+        "https://api.spotify.com/v1/search",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"q": query, "type": "track", "limit": min(limit, 50)},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    items = resp.json().get("tracks", {}).get("items", [])
+    return [_track_to_dict(t) for t in items]
+
+
+def _track_to_dict(t: dict) -> dict:
+    """Mappa il track object Spotify sul nostro schema uniforme."""
+    return {
+        "id": t.get("id", ""),
+        "url": t.get("external_urls", {}).get("spotify", ""),
+        "name": t.get("name", ""),
+        "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
+        "album": t.get("album", {}).get("name", ""),
+        "duration_sec": int(t.get("duration_ms", 0)) // 1000,
+    }
