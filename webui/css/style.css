@@ -1550,3 +1550,131 @@ input[type="number"]::-webkit-inner-spin-button {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ===============================
+   BEATPORT
+   =============================== */
+.beatport-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.beatport-header select.input {
+  min-width: 260px;
+  flex: 0 1 320px;
+}
+
+.hint-inline {
+  color: var(--text-3);
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.beatport-status {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--text-2);
+  min-height: 18px;
+}
+
+.beatport-status.loading { color: var(--text-3); font-style: italic; }
+.beatport-status.error   { color: var(--red); font-weight: 600; }
+.beatport-status.ok      { color: var(--green); font-weight: 600; }
+
+.beatport-output-info {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-all;
+}
+
+.beatport-output-info.warn {
+  color: var(--amber-hover);
+  font-family: inherit;
+}
+
+.beatport-table-card {
+  padding: 0;
+  overflow: hidden;
+}
+
+.beatport-table-wrap {
+  max-height: 460px;
+  overflow: auto;
+}
+
+.beatport-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.beatport-table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg-card-2);
+  color: var(--text-3);
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  z-index: 1;
+}
+
+.beatport-table tbody td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--divider);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.beatport-table tbody tr:hover {
+  background: rgba(99, 102, 241, 0.06);
+}
+
+.beatport-table tbody tr.already-downloaded td {
+  color: var(--text-3);
+}
+
+.beatport-table tbody tr.already-downloaded .col-state {
+  color: var(--green);
+  font-weight: 600;
+}
+
+.beatport-table .col-check { width: 36px; }
+.beatport-table .col-pos   { width: 40px; color: var(--text-3); font-variant-numeric: tabular-nums; }
+.beatport-table .col-dur   { width: 70px; color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
+.beatport-table .col-state { width: 130px; font-size: 12px; }
+
+.beatport-table input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--indigo, #6366F1);
+  cursor: pointer;
+}
+
+.beatport-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--divider);
+  background: var(--bg-card);
+}
+
+.beatport-toolbar .counter {
+  margin-left: 0;
+  margin-right: auto;
+}
+
+@media (max-width: 720px) {
+  .beatport-header { flex-direction: column; align-items: stretch; }
+  .hint-inline { margin-left: 0; }
+  .beatport-table .col-state { width: 110px; }
+}
