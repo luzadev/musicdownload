@@ -255,3 +255,28 @@ def resolve_spotify_track_no_auth(url: str) -> tuple[str, str, list[dict]]:
 
     track = {"name": name, "artist": artist}
     return "Brano", name, [track]
+
+
+def search_track(token: str, query: str):
+    """Cerca un brano su Spotify e ritorna il primo match.
+
+    Ritorna un dict con {id, url, name, artists} oppure None se nessun match.
+    Solleva requests.HTTPError su errori server / auth.
+    """
+    resp = requests.get(
+        "https://api.spotify.com/v1/search",
+        headers={"Authorization": f"Bearer {token}"},
+        params={"q": query, "type": "track", "limit": 1},
+        timeout=15,
+    )
+    resp.raise_for_status()
+    items = resp.json().get("tracks", {}).get("items", [])
+    if not items:
+        return None
+    t = items[0]
+    return {
+        "id": t.get("id"),
+        "url": t.get("external_urls", {}).get("spotify", ""),
+        "name": t.get("name", ""),
+        "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
+    }
