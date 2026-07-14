@@ -397,6 +397,8 @@ const logEls = {
   download: () => $("#dlLog"),
   upgrade: () => $("#upLog"),
   video: () => $("#videoLog"),
+  spotify: () => $("#spotify-log"),
+  youtube: () => $("#youtube-log"),
 };
 
 function classifyLog(msg) {
@@ -504,6 +506,10 @@ async function init() {
 
   // Beatport tab — popola generi, ripristina ultimo genere, aggancia handler
   await BeatportUI.init();
+
+  // Spotify + YouTube search tabs
+  await SpotifyUI.init();
+  await YoutubeUI.init();
 }
 
 async function refreshRecDevices() {
@@ -1457,6 +1463,464 @@ const BeatportUI = (function () {
     bridgeHandlers["log"] = ({ view, msg }) => {
       if (origLog) origLog({ view, msg });
       if (downloading && view === "download") appendBeatportLog(msg);
+    };
+  }
+
+  return { init };
+})();
+
+// =====================================================================
+// Spotify search
+// =====================================================================
+const SpotifyUI = (() => {
+  // NOTE: local module state — named `mstate` to NOT shadow the outer
+  // module-level `state` (which holds `state.config`).
+  const mstate = { tracks: [], existing: [], downloading: false };
+
+  function _escape(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function _fmtDuration(sec) {
+    const n = Math.max(0, Math.floor(Number(sec) || 0));
+    const m = Math.floor(n / 60);
+    const s = n % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function updateSelectionCount() {
+    const boxes = $$("#spotify-tbody input[type=checkbox]");
+    const total = boxes.length;
+    const selected = boxes.filter((b) => b.checked).length;
+    $("#spotify-selected-count").textContent = `${selected}/${total} selezionati`;
+    const btn = $("#spotify-download-btn");
+    if (btn) {
+      btn.disabled = mstate.downloading || selected === 0;
+      btn.innerHTML = `<span class="ico">▶</span> Scarica selezionati${selected ? ` (${selected})` : ""}`;
+    }
+    const sa = $("#spotify-select-all");
+    if (sa) {
+      if (total === 0) { sa.checked = false; sa.indeterminate = false; }
+      else if (selected === 0) { sa.checked = false; sa.indeterminate = false; }
+      else if (selected === total) { sa.checked = true; sa.indeterminate = false; }
+      else { sa.checked = false; sa.indeterminate = true; }
+    }
+  }
+
+  function renderTable() {
+    const tbody = $("#spotify-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    mstate.tracks.forEach((t, i) => {
+      const already = !!mstate.existing[i];
+      const tr = document.createElement("tr");
+      tr.dataset.idx = String(i);
+      if (already) tr.classList.add("already-downloaded");
+      tr.innerHTML = `
+        <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-pos">${i + 1}</td>
+        <td>${_escape(t.artists)}</td>
+        <td>${_escape(t.name)}</td>
+        <td>${_escape(t.album)}</td>
+        <td class="col-dur">${_fmtDuration(t.duration_sec)}</td>
+        <td class="col-state">${already ? "✓ già scaricato" : ""}</td>
+      `;
+      const cb = tr.querySelector("input[type=checkbox]");
+      if (cb) cb.addEventListener("change", updateSelectionCount);
+      tbody.appendChild(tr);
+    });
+    updateSelectionCount();
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#spotify-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  function updateOutputInfo() {
+    const info = $("#spotify-output-info");
+    if (!info) return;
+    const root = (state.config && state.config.output_dir) || "";
+    if (!root) {
+      info.textContent = "⚠ Imposta la cartella output in Impostazioni prima di scaricare";
+      info.className = "beatport-output-info warn";
+    } else {
+      info.textContent = `Destinazione: ${root}/Spotify`;
+      info.className = "beatport-output-info";
+    }
+  }
+
+  async function doSearch() {
+    const q = ($("#spotify-query").value || "").trim();
+    if (!q) return;
+    const artistMode = $("#spotify-artist-mode").checked;
+    const wrap = $("#spotify-table-wrap");
+
+    setStatus("Ricerca in corso…", "loading");
+    if (wrap) wrap.hidden = true;
+
+    let res;
+    try {
+      res = await window.pywebview.api.spotify_search(q, artistMode);
+    } catch (e) {
+      setStatus("Errore: " + ((e && e.message) || e), "error");
+      return;
+    }
+    if (!res || !res.ok) {
+      const errKey = res && res.error;
+      const messages = {
+        empty_query: "Inserisci una query di ricerca.",
+        no_creds: "Credenziali Spotify mancanti. Vai su Impostazioni.",
+        auth: "Impossibile autenticarsi con Spotify. Verifica le credenziali.",
+      };
+      setStatus(messages[errKey] || (res && res.message) || "Errore sconosciuto", "error");
+      return;
+    }
+
+    mstate.tracks = res.tracks || [];
+    if (mstate.tracks.length === 0) {
+      setStatus(`Nessun brano trovato per "${q}".`, "");
+      return;
+    }
+    try {
+      mstate.existing = await window.pywebview.api.spotify_check_existing(mstate.tracks);
+    } catch (_e) {
+      mstate.existing = mstate.tracks.map(() => false);
+    }
+
+    setStatus(`${mstate.tracks.length} risultati`, "ok");
+    updateOutputInfo();
+    renderTable();
+    if (wrap) wrap.hidden = false;
+  }
+
+  function appendSpotifyLog(msg) {
+    const el = $("#spotify-log");
+    if (!el) return;
+    const cls = classifyLog(msg);
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function startDownload() {
+    const boxes = $$("#spotify-tbody input[type=checkbox]");
+    const selected = [];
+    boxes.forEach((b) => {
+      if (b.checked) {
+        const idx = parseInt(b.dataset.idx, 10);
+        if (!isNaN(idx) && mstate.tracks[idx]) selected.push(mstate.tracks[idx]);
+      }
+    });
+    if (!selected.length) {
+      toast("Seleziona almeno un brano", "error");
+      return;
+    }
+    if (!state.config || !state.config.output_dir) {
+      toast("Imposta la cartella output in Impostazioni", "error");
+      return;
+    }
+
+    mstate.downloading = true;
+    $("#spotify-download-btn").disabled = true;
+    $("#spotify-stop-btn").hidden = false;
+    $("#spotify-stop-btn").disabled = false;
+    $("#spotify-log").innerHTML = "";
+    appendSpotifyLog(`[INFO] Avvio download di ${selected.length} brani…`);
+
+    let res;
+    try {
+      res = await window.pywebview.api.spotify_search_download(selected);
+    } catch (e) {
+      appendSpotifyLog("[ERRORE] " + ((e && e.message) || e));
+      finishDownload();
+      return;
+    }
+    if (!res || !res.ok) {
+      const errMsg = (res && (res.error || res.message)) || "Impossibile avviare il download";
+      appendSpotifyLog("[ERRORE] " + errMsg);
+      if (!handleGateBlock(res || {})) toast(errMsg, "error");
+      finishDownload();
+    }
+  }
+
+  async function stopDownload() {
+    try { await window.pywebview.api.stop_download(); } catch (e) { console.error(e); }
+  }
+
+  function finishDownload() {
+    mstate.downloading = false;
+    $("#spotify-stop-btn").hidden = true;
+    $("#spotify-stop-btn").disabled = true;
+    updateSelectionCount();
+    if (mstate.tracks.length) {
+      window.pywebview.api.spotify_check_existing(mstate.tracks)
+        .then((r) => { mstate.existing = r || mstate.existing; renderTable(); })
+        .catch(() => {});
+    }
+  }
+
+  async function init() {
+    // Pre-compila da config
+    try {
+      const q = (state.config && state.config.spotify_search_last_query) || "";
+      const am = !!(state.config && state.config.spotify_search_artist_mode);
+      const qi = $("#spotify-query");
+      if (qi && q) qi.value = q;
+      const ac = $("#spotify-artist-mode");
+      if (ac) ac.checked = am;
+    } catch (_e) { /* ignora */ }
+
+    updateOutputInfo();
+
+    $("#spotify-search-btn").addEventListener("click", doSearch);
+    $("#spotify-query").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+    $("#spotify-select-all").addEventListener("change", (e) => {
+      $$("#spotify-tbody input[type=checkbox]").forEach((b) => { b.checked = e.target.checked; });
+      updateSelectionCount();
+    });
+    $("#spotify-download-btn").addEventListener("click", startDownload);
+    $("#spotify-stop-btn").addEventListener("click", stopDownload);
+
+    // Wrap bridge handlers additivamente
+    const origLog = bridgeHandlers["log"];
+    bridgeHandlers["log"] = (payload) => {
+      if (origLog) origLog(payload);
+      if (mstate.downloading && payload && payload.view === "download") {
+        appendSpotifyLog(payload.msg);
+      }
+    };
+    const origDone = bridgeHandlers["download:done"];
+    bridgeHandlers["download:done"] = (payload) => {
+      if (origDone) origDone(payload);
+      if (mstate.downloading) finishDownload();
+    };
+  }
+
+  return { init };
+})();
+
+// =====================================================================
+// YouTube search
+// =====================================================================
+const YoutubeUI = (() => {
+  const mstate = { tracks: [], existing: [], downloading: false };
+
+  function _escape(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+  function _fmtDuration(sec) {
+    const n = Math.max(0, Math.floor(Number(sec) || 0));
+    const m = Math.floor(n / 60);
+    const s = n % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function updateSelectionCount() {
+    const boxes = $$("#youtube-tbody input[type=checkbox]");
+    const total = boxes.length;
+    const selected = boxes.filter((b) => b.checked).length;
+    $("#youtube-selected-count").textContent = `${selected}/${total} selezionati`;
+    const btn = $("#youtube-download-btn");
+    if (btn) {
+      btn.disabled = mstate.downloading || selected === 0;
+      btn.innerHTML = `<span class="ico">▶</span> Scarica selezionati${selected ? ` (${selected})` : ""}`;
+    }
+    const sa = $("#youtube-select-all");
+    if (sa) {
+      if (total === 0) { sa.checked = false; sa.indeterminate = false; }
+      else if (selected === 0) { sa.checked = false; sa.indeterminate = false; }
+      else if (selected === total) { sa.checked = true; sa.indeterminate = false; }
+      else { sa.checked = false; sa.indeterminate = true; }
+    }
+  }
+
+  function renderTable() {
+    const tbody = $("#youtube-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    mstate.tracks.forEach((t, i) => {
+      const already = !!mstate.existing[i];
+      const tr = document.createElement("tr");
+      tr.dataset.idx = String(i);
+      if (already) tr.classList.add("already-downloaded");
+      tr.innerHTML = `
+        <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-pos">${i + 1}</td>
+        <td>${_escape(t.title)}</td>
+        <td>${_escape(t.channel)}</td>
+        <td class="col-dur">${_fmtDuration(t.duration_sec)}</td>
+        <td class="col-state">${already ? "✓ già scaricato" : ""}</td>
+      `;
+      const cb = tr.querySelector("input[type=checkbox]");
+      if (cb) cb.addEventListener("change", updateSelectionCount);
+      tbody.appendChild(tr);
+    });
+    updateSelectionCount();
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#youtube-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  function updateOutputInfo() {
+    const info = $("#youtube-output-info");
+    if (!info) return;
+    const root = (state.config && state.config.output_dir) || "";
+    if (!root) {
+      info.textContent = "⚠ Imposta la cartella output in Impostazioni prima di scaricare";
+      info.className = "beatport-output-info warn";
+    } else {
+      info.textContent = `Destinazione: ${root}/YouTube`;
+      info.className = "beatport-output-info";
+    }
+  }
+
+  async function doSearch() {
+    const q = ($("#youtube-query").value || "").trim();
+    if (!q) return;
+    const wrap = $("#youtube-table-wrap");
+
+    setStatus("Ricerca su YouTube in corso…", "loading");
+    if (wrap) wrap.hidden = true;
+
+    let res;
+    try {
+      res = await window.pywebview.api.youtube_search(q);
+    } catch (e) {
+      setStatus("Errore: " + ((e && e.message) || e), "error");
+      return;
+    }
+    if (!res || !res.ok) {
+      setStatus((res && res.message) || "Errore sconosciuto", "error");
+      return;
+    }
+
+    mstate.tracks = res.tracks || [];
+    if (mstate.tracks.length === 0) {
+      setStatus(`Nessun video trovato per "${q}".`, "");
+      return;
+    }
+    try {
+      mstate.existing = await window.pywebview.api.youtube_check_existing(mstate.tracks);
+    } catch (_e) {
+      mstate.existing = mstate.tracks.map(() => false);
+    }
+
+    setStatus(`${mstate.tracks.length} risultati`, "ok");
+    updateOutputInfo();
+    renderTable();
+    if (wrap) wrap.hidden = false;
+  }
+
+  function appendYoutubeLog(msg) {
+    const el = $("#youtube-log");
+    if (!el) return;
+    const cls = classifyLog(msg);
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function startDownload() {
+    const boxes = $$("#youtube-tbody input[type=checkbox]");
+    const selected = [];
+    boxes.forEach((b) => {
+      if (b.checked) {
+        const idx = parseInt(b.dataset.idx, 10);
+        if (!isNaN(idx) && mstate.tracks[idx]) selected.push(mstate.tracks[idx]);
+      }
+    });
+    if (!selected.length) {
+      toast("Seleziona almeno un video", "error");
+      return;
+    }
+    if (!state.config || !state.config.output_dir) {
+      toast("Imposta la cartella output in Impostazioni", "error");
+      return;
+    }
+
+    mstate.downloading = true;
+    $("#youtube-download-btn").disabled = true;
+    $("#youtube-stop-btn").hidden = false;
+    $("#youtube-stop-btn").disabled = false;
+    $("#youtube-log").innerHTML = "";
+    appendYoutubeLog(`[INFO] Avvio download di ${selected.length} video…`);
+
+    let res;
+    try {
+      res = await window.pywebview.api.youtube_search_download(selected);
+    } catch (e) {
+      appendYoutubeLog("[ERRORE] " + ((e && e.message) || e));
+      finishDownload();
+      return;
+    }
+    if (!res || !res.ok) {
+      const errMsg = (res && (res.error || res.message)) || "Impossibile avviare il download";
+      appendYoutubeLog("[ERRORE] " + errMsg);
+      if (!handleGateBlock(res || {})) toast(errMsg, "error");
+      finishDownload();
+    }
+  }
+
+  async function stopDownload() {
+    try { await window.pywebview.api.stop_download(); } catch (e) { console.error(e); }
+  }
+
+  function finishDownload() {
+    mstate.downloading = false;
+    $("#youtube-stop-btn").hidden = true;
+    $("#youtube-stop-btn").disabled = true;
+    updateSelectionCount();
+    if (mstate.tracks.length) {
+      window.pywebview.api.youtube_check_existing(mstate.tracks)
+        .then((r) => { mstate.existing = r || mstate.existing; renderTable(); })
+        .catch(() => {});
+    }
+  }
+
+  async function init() {
+    try {
+      const q = (state.config && state.config.youtube_search_last_query) || "";
+      const qi = $("#youtube-query");
+      if (qi && q) qi.value = q;
+    } catch (_e) { /* ignora */ }
+
+    updateOutputInfo();
+
+    $("#youtube-search-btn").addEventListener("click", doSearch);
+    $("#youtube-query").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+    $("#youtube-select-all").addEventListener("change", (e) => {
+      $$("#youtube-tbody input[type=checkbox]").forEach((b) => { b.checked = e.target.checked; });
+      updateSelectionCount();
+    });
+    $("#youtube-download-btn").addEventListener("click", startDownload);
+    $("#youtube-stop-btn").addEventListener("click", stopDownload);
+
+    const origLog = bridgeHandlers["log"];
+    bridgeHandlers["log"] = (payload) => {
+      if (origLog) origLog(payload);
+      if (mstate.downloading && payload && payload.view === "download") {
+        appendYoutubeLog(payload.msg);
+      }
+    };
+    const origDone = bridgeHandlers["download:done"];
+    bridgeHandlers["download:done"] = (payload) => {
+      if (origDone) origDone(payload);
+      if (mstate.downloading) finishDownload();
     };
   }
 
