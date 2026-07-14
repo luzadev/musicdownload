@@ -12,8 +12,10 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Optional
 
+import requests
+
 from core.config import load_config, save_config, VERSION, LICENSE_API_URL
-from core import beatport
+from core import beatport, spotify_client
 from core import license as license_mod
 from core.downloader import (
     download_playlist,
@@ -1084,6 +1086,187 @@ class Api:
 
         return self.start_tracks_download({
             "tracks": converted,
+            "output_dir": out_root,
+            "subfolder": subfolder,
+        })
+
+    # ================================================================
+    # Music Search — Spotify + YouTube
+    # ================================================================
+
+    def _music_output_dir(self, out_root: str, source: str) -> Path:
+        """Cartella target per Spotify/YouTube search. Coerente col pattern
+        di start_tracks_download (subfolder singolo, no nested)."""
+        safe = source.replace("/", "_").replace("\\", "_").strip()
+        return Path(out_root) / safe
+
+    # ---- Spotify ----
+
+    def spotify_search(self, query: str, artist_mode: bool = False) -> dict:
+        """Cerca su Spotify. Free-form (limit 50) o artist-mode (discografia)."""
+        query = (query or "").strip()
+        if not query:
+            return {"ok": False, "error": "empty_query", "message": "Query vuota"}
+
+        # Salva stato
+        try:
+            cfg = load_config()
+            cfg["spotify_search_last_query"] = query
+            cfg["spotify_search_artist_mode"] = bool(artist_mode)
+            save_config(cfg)
+        except Exception:
+            pass
+
+        cfg = load_config()
+        cid = (cfg.get("client_id") or "").strip()
+        secret = (cfg.get("client_secret") or "").strip()
+        if not cid or not secret:
+            return {"ok": False, "error": "no_creds", "message": "Credenziali Spotify mancanti"}
+
+        try:
+            token = spotify_client.get_access_token(cid, secret)
+        except Exception as e:
+            return {"ok": False, "error": "auth", "message": str(e)}
+
+        try:
+            if artist_mode:
+                tracks = spotify_client.search_artist_discography(token, query)
+            else:
+                tracks = spotify_client.search_tracks(token, query, limit=50)
+        except ValueError as e:
+            return {"ok": False, "error": "artist_not_found", "message": str(e)}
+        except requests.HTTPError as e:
+            code = e.response.status_code if e.response is not None else 0
+            if code == 429:
+                return {"ok": False, "error": "rate_limit", "message": "Spotify limitante - attendi qualche secondo"}
+            return {"ok": False, "error": "server", "message": f"Spotify HTTP {code}"}
+        except Exception as e:
+            return {"ok": False, "error": "unknown", "message": str(e)}
+
+        return {"ok": True, "tracks": tracks}
+
+    def spotify_check_existing(self, tracks: list) -> list:
+        """True per ogni track già presente in output_dir/Spotify/."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return [False] * len(tracks)
+        out_dir = self._music_output_dir(out_root, "Spotify")
+        if not out_dir.exists():
+            return [False] * len(tracks)
+        existing_stems = [p.stem.lower() for p in out_dir.glob("*.mp3")]
+        result = []
+        for t in tracks:
+            title = (t.get("name") or "").lower().strip()
+            artists = (t.get("artists") or "")
+            first_artist = artists.split(",")[0].strip().lower()
+            if not title or not first_artist:
+                result.append(False)
+                continue
+            result.append(any((title in stem and first_artist in stem) for stem in existing_stems))
+        return result
+
+    def spotify_search_download(self, tracks: list) -> dict:
+        """Scarica i track Spotify selezionati (name+artist → YouTube search)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        target = self._music_output_dir(out_root, "Spotify")
+        subfolder = target.name
+
+        converted = []
+        for t in tracks:
+            title = (t.get("name") or "").strip()
+            artists = (t.get("artists") or "").strip()
+            if not title:
+                continue
+            converted.append({"name": title, "artist": artists})
+
+        if not converted:
+            return {"ok": False, "error": "Nessun brano valido"}
+
+        return self.start_tracks_download({
+            "tracks": converted,
+            "output_dir": out_root,
+            "subfolder": subfolder,
+        })
+
+    # ---- YouTube ----
+
+    def youtube_search(self, query: str) -> dict:
+        """Cerca 50 risultati su YouTube via yt-dlp."""
+        from core import youtube_search as yts
+
+        query = (query or "").strip()
+        if not query:
+            return {"ok": False, "error": "empty_query", "message": "Query vuota"}
+
+        try:
+            cfg = load_config()
+            cfg["youtube_search_last_query"] = query
+            save_config(cfg)
+        except Exception:
+            pass
+
+        try:
+            results = yts.search_youtube(query, limit=50)
+        except RuntimeError as e:
+            return {"ok": False, "error": "ytdlp", "message": str(e)}
+        except Exception as e:
+            return {"ok": False, "error": "unknown", "message": str(e)}
+
+        return {"ok": True, "tracks": results}
+
+    def youtube_check_existing(self, tracks: list) -> list:
+        """True per ogni track già presente in output_dir/YouTube/. Match sul titolo video."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return [False] * len(tracks)
+        out_dir = self._music_output_dir(out_root, "YouTube")
+        if not out_dir.exists():
+            return [False] * len(tracks)
+        existing_stems = [p.stem.lower() for p in out_dir.glob("*.mp3")]
+        result = []
+        for t in tracks:
+            title = (t.get("title") or "").lower().strip()
+            if not title:
+                result.append(False)
+                continue
+            result.append(any(
+                (title in stem or stem in title)
+                for stem in existing_stems
+            ))
+        return result
+
+    def youtube_search_download(self, tracks: list) -> dict:
+        """Scarica direttamente gli URL YouTube selezionati (no re-search)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        target = self._music_output_dir(out_root, "YouTube")
+        subfolder = target.name
+
+        urls: list = []
+        titles: list = []
+        for t in tracks:
+            url = (t.get("url") or "").strip()
+            title = (t.get("title") or "").strip()
+            if not url or not title:
+                continue
+            urls.append(url)
+            titles.append(title)
+
+        if not urls:
+            return {"ok": False, "error": "Nessun URL valido"}
+
+        return self.start_urls_download({
+            "urls": urls,
+            "titles": titles,
             "output_dir": out_root,
             "subfolder": subfolder,
         })
