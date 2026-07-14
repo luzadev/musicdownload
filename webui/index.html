@@ -33,6 +33,14 @@
           <span class="nav-icon">🎧</span>
           <span>Beatport</span>
         </button>
+        <button class="nav-item" data-view="spotify" data-feature="audio">
+          <span class="nav-icon">🟢</span>
+          <span>Spotify</span>
+        </button>
+        <button class="nav-item" data-view="youtube" data-feature="audio">
+          <span class="nav-icon">▶</span>
+          <span>YouTube</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -907,6 +915,123 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="beatport-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: SPOTIFY SEARCH ===== -->
+      <section class="view" id="view-spotify">
+        <header class="hero hero-indigo">
+          <div class="hero-content">
+            <div class="hero-eyebrow indigo">RICERCA SPOTIFY</div>
+            <h1 class="hero-title">Cerca brani su Spotify</h1>
+            <p class="hero-subtitle">Digita un artista, un titolo, o entrambi. Attiva "Solo artista" per scaricare tutta la discografia.</p>
+          </div>
+          <div class="hero-deco">🟢</div>
+        </header>
+
+        <h2 class="section-label">Ricerca</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <input type="text" id="spotify-query" class="input pill" placeholder="Es: Solomun, Hot Sauce, Kapuchon Hot Sauce…" style="flex:1; min-width:260px;" />
+            <label style="display:flex; gap:6px; align-items:center; color:var(--text-2); font-size:13px;">
+              <input type="checkbox" id="spotify-artist-mode" />
+              <span>Solo artista (discografia)</span>
+            </label>
+            <button class="btn btn-primary pill" id="spotify-search-btn">
+              <span class="ico">🔎</span> Cerca
+            </button>
+          </div>
+          <div id="spotify-status" class="beatport-status"></div>
+          <div id="spotify-output-info" class="beatport-output-info"></div>
+        </div>
+
+        <div class="card beatport-table-card" id="spotify-table-wrap" hidden>
+          <div class="beatport-table-wrap">
+            <table class="beatport-table" id="spotify-table">
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="spotify-select-all" checked /></th>
+                  <th class="col-pos">#</th>
+                  <th>Artista</th>
+                  <th>Titolo</th>
+                  <th>Album</th>
+                  <th class="col-dur">Durata</th>
+                  <th class="col-state"></th>
+                </tr>
+              </thead>
+              <tbody id="spotify-tbody"></tbody>
+            </table>
+          </div>
+          <div class="beatport-toolbar" id="spotify-toolbar">
+            <span class="counter" id="spotify-selected-count">0/0 selezionati</span>
+            <button class="btn btn-primary pill" id="spotify-download-btn" disabled>
+              <span class="ico">▶</span> Scarica selezionati
+            </button>
+            <button class="btn btn-danger pill" id="spotify-stop-btn" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="spotify-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: YOUTUBE SEARCH ===== -->
+      <section class="view" id="view-youtube">
+        <header class="hero hero-indigo">
+          <div class="hero-content">
+            <div class="hero-eyebrow indigo">RICERCA YOUTUBE</div>
+            <h1 class="hero-title">Cerca video su YouTube</h1>
+            <p class="hero-subtitle">Perfetto per mix DJ, unreleased, bootleg e brani non presenti su Spotify.</p>
+          </div>
+          <div class="hero-deco">▶</div>
+        </header>
+
+        <h2 class="section-label">Ricerca</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <input type="text" id="youtube-query" class="input pill" placeholder="Es: Solomun Cocoricò 2024, Kapuchon Hot Sauce remix…" style="flex:1; min-width:260px;" />
+            <button class="btn btn-primary pill" id="youtube-search-btn">
+              <span class="ico">🔎</span> Cerca
+            </button>
+          </div>
+          <div id="youtube-status" class="beatport-status"></div>
+          <div id="youtube-output-info" class="beatport-output-info"></div>
+        </div>
+
+        <div class="card beatport-table-card" id="youtube-table-wrap" hidden>
+          <div class="beatport-table-wrap">
+            <table class="beatport-table" id="youtube-table">
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="youtube-select-all" checked /></th>
+                  <th class="col-pos">#</th>
+                  <th>Titolo video</th>
+                  <th>Canale</th>
+                  <th class="col-dur">Durata</th>
+                  <th class="col-state"></th>
+                </tr>
+              </thead>
+              <tbody id="youtube-tbody"></tbody>
+            </table>
+          </div>
+          <div class="beatport-toolbar" id="youtube-toolbar">
+            <span class="counter" id="youtube-selected-count">0/0 selezionati</span>
+            <button class="btn btn-primary pill" id="youtube-download-btn" disabled>
+              <span class="ico">▶</span> Scarica selezionati
+            </button>
+            <button class="btn btn-danger pill" id="youtube-stop-btn" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="youtube-log"></div>
         </div>
       </section>
 
