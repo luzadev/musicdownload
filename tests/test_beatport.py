@@ -27,3 +27,42 @@ class TestListGenres:
         result = beatport.list_genres()
         slugs = [g["slug"] for g in result]
         assert "melodic-house-techno" in slugs
+
+
+class TestBeatportTrack:
+    def test_display_format(self):
+        t = beatport.BeatportTrack(
+            position=1,
+            title="Hot Sauce",
+            mix="Extended",
+            artists="Kapuchon, Miss Monique & GLZ",
+            duration_sec=336,
+            beatport_id=12345,
+        )
+        assert t.display == "Kapuchon, Miss Monique & GLZ – Hot Sauce (Extended) (5:36)"
+
+    def test_display_pads_seconds(self):
+        t = beatport.BeatportTrack(
+            position=1, title="X", mix="Y", artists="A",
+            duration_sec=65, beatport_id=1,
+        )
+        assert t.display.endswith("(1:05)")
+
+    def test_spotify_query(self):
+        t = beatport.BeatportTrack(
+            position=1,
+            title="Hot Sauce",
+            mix="Extended",
+            artists="Kapuchon, Miss Monique & GLZ",
+            duration_sec=336,
+            beatport_id=12345,
+        )
+        assert t.spotify_query == "Kapuchon, Miss Monique & GLZ Hot Sauce"
+
+    def test_is_frozen(self):
+        t = beatport.BeatportTrack(
+            position=1, title="X", mix="Y", artists="A",
+            duration_sec=1, beatport_id=1,
+        )
+        with pytest.raises(Exception):
+            t.title = "Z"  # frozen=True impedisce mutazione

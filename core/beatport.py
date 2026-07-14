@@ -7,6 +7,31 @@ Vedi docs/superpowers/specs/2026-07-14-beatport-charts-design.md.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+
+
+@dataclass(frozen=True)
+class BeatportTrack:
+    position: int
+    title: str
+    mix: str          # es. "Extended Mix", "Original Mix", ""
+    artists: str      # es. "A, B & C" già formattato
+    duration_sec: int
+    beatport_id: int
+
+    @property
+    def display(self) -> str:
+        """Formato testo compatibile coi file .txt curati a mano:
+        'Artista – Titolo (Mix) (M:SS)'."""
+        m, s = divmod(self.duration_sec, 60)
+        return f"{self.artists} – {self.title} ({self.mix}) ({m}:{s:02d})"
+
+    @property
+    def spotify_query(self) -> str:
+        """Query pura per la search Spotify (senza mix name, che disturba
+        il matching su titoli tipo 'Extended Mix')."""
+        return f"{self.artists} {self.title}"
+
 
 # Mappa slug URL Beatport -> (numeric_id, display_name)
 # Enumerata via scripts/refresh_beatport_genres.py (Task 1).
