@@ -8,3 +8,8 @@ pyobjc-framework-WebKit>=10.0 ; sys_platform == "darwin"
 pyobjc-framework-AVFoundation>=10.0 ; sys_platform == "darwin"
 pythonnet==3.0.5 ; sys_platform == "win32"
 clr-loader==0.2.7.post0 ; sys_platform == "win32"
+
+# --- dev only ---
+pytest>=8.0.0
+responses>=0.25.0
+freezegun>=1.4.0
