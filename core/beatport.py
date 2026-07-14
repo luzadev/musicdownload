@@ -110,3 +110,59 @@ def list_genres() -> list:
     ]
     result.sort(key=lambda g: g["name"].casefold())
     return result
+
+
+def _find_tracks_results(data: dict) -> list:
+    """Cerca dentro le queries dehydrated il primo `results` che ha almeno 50 elementi
+    e la shape di una track (chiave `id` presente)."""
+    try:
+        queries = data["props"]["pageProps"]["dehydratedState"]["queries"]
+    except (KeyError, TypeError) as e:
+        raise BeatportParseError(
+            f"schema JSON inatteso, `results` non localizzabile (chiave mancante: {e})"
+        ) from e
+
+    for q in queries:
+        state_data = (q or {}).get("state", {}).get("data")
+        if not isinstance(state_data, dict):
+            continue
+        results = state_data.get("results")
+        if isinstance(results, list) and len(results) >= 50:
+            if results and isinstance(results[0], dict) and "id" in results[0]:
+                return results
+    raise BeatportParseError("nessun `results` di 50+ track trovato in __NEXT_DATA__")
+
+
+def _format_artists(artists_field: object) -> str:
+    """Beatport ritorna artists come lista di dict {name, ...}.
+    Formatta come 'A, B & C' (& prima dell'ultimo)."""
+    if not isinstance(artists_field, list) or not artists_field:
+        return ""
+    names = [a.get("name", "") for a in artists_field if isinstance(a, dict)]
+    names = [n for n in names if n]
+    if not names:
+        return ""
+    if len(names) == 1:
+        return names[0]
+    return ", ".join(names[:-1]) + " & " + names[-1]
+
+
+def _parse_tracks(data: dict) -> list:
+    """Trasforma i track dict di Beatport in BeatportTrack ordinati per posizione."""
+    raw = _find_tracks_results(data)
+    out: list = []
+    for i, item in enumerate(raw, 1):
+        try:
+            length_ms = int(item.get("length_ms") or 0)
+            track = BeatportTrack(
+                position=i,
+                title=str(item.get("name") or "").strip(),
+                mix=str(item.get("mix_name") or "").strip(),
+                artists=_format_artists(item.get("artists")),
+                duration_sec=length_ms // 1000,
+                beatport_id=int(item.get("id") or 0),
+            )
+        except (TypeError, ValueError) as e:
+            raise BeatportParseError(f"track[{i}] shape inattesa: {e}") from e
+        out.append(track)
+    return out

@@ -83,3 +83,31 @@ class TestExtractNextData:
         broken = '<script id="__NEXT_DATA__" type="application/json">{not: valid}</script>'
         with pytest.raises(beatport.BeatportParseError, match="JSON malformato"):
             beatport._extract_next_data(broken)
+
+
+class TestParseTracks:
+    def test_extracts_100_tracks(self, fixtures_dir):
+        html = (fixtures_dir / "beatport_melodic_top100.html").read_text()
+        data = beatport._extract_next_data(html)
+        tracks = beatport._parse_tracks(data)
+        assert len(tracks) == 100
+
+    def test_positions_are_sequential_1_to_100(self, fixtures_dir):
+        html = (fixtures_dir / "beatport_melodic_top100.html").read_text()
+        tracks = beatport._parse_tracks(beatport._extract_next_data(html))
+        positions = [t.position for t in tracks]
+        assert positions == list(range(1, 101))
+
+    def test_track_shape(self, fixtures_dir):
+        html = (fixtures_dir / "beatport_melodic_top100.html").read_text()
+        tracks = beatport._parse_tracks(beatport._extract_next_data(html))
+        first = tracks[0]
+        assert isinstance(first, beatport.BeatportTrack)
+        assert first.title
+        assert first.artists
+        assert first.duration_sec > 0
+        assert first.beatport_id > 0
+
+    def test_schema_missing_results_raises(self):
+        with pytest.raises(beatport.BeatportParseError, match="results"):
+            beatport._parse_tracks({"props": {"pageProps": {}}})
