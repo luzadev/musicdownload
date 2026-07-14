@@ -501,6 +501,9 @@ async function init() {
     $("#recPathDisplay").classList.remove("empty");
   }
   await refreshRecDevices();
+
+  // Beatport tab — popola generi, ripristina ultimo genere, aggancia handler
+  await BeatportUI.init();
 }
 
 async function refreshRecDevices() {
@@ -1169,6 +1172,296 @@ $("#upgradeOpenBtn")?.addEventListener("click", async () => {
 $("#quotaUpgradeBtn")?.addEventListener("click", async () => {
   try { await window.pywebview.api.open_purchase_page(); } catch (_e) {}
 });
+
+// ============================================================
+// BEATPORT tab — carica Top 100 per genere, seleziona tracce, scarica
+// (il download riusa start_tracks_download, quindi passa dagli stessi
+// canali "download:progress" / "download:done" / log view="download")
+// ============================================================
+const BeatportUI = (function () {
+  let genres = [];
+  let currentTracks = [];
+  let existing = [];
+  let currentGenreName = "";
+  let currentGenreSlug = "";
+  let downloading = false;
+
+  function fmtDur(sec) {
+    const n = Number(sec) || 0;
+    const m = Math.floor(n / 60);
+    const s = Math.floor(n % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function safeGenreFolder(name) {
+    return String(name || "").replace(/[\/\\]/g, "_").trim();
+  }
+
+  function populateSelect() {
+    const sel = $("#beatport-genre");
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const g of genres) {
+      const opt = document.createElement("option");
+      opt.value = g.slug;
+      opt.textContent = g.name;
+      sel.appendChild(opt);
+    }
+  }
+
+  function updateOutputInfo() {
+    const info = $("#beatport-output-info");
+    if (!info) return;
+    const root = (state.config && state.config.output_dir) || "";
+    if (!root) {
+      info.textContent = "⚠ Imposta la cartella output in Impostazioni prima di scaricare";
+      info.className = "beatport-output-info warn";
+      return;
+    }
+    const folder = safeGenreFolder(currentGenreName);
+    info.textContent = folder
+      ? `Destinazione: ${root}/Beatport/${folder}`
+      : `Destinazione: ${root}/Beatport`;
+    info.className = "beatport-output-info";
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#beatport-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  async function loadChart(forceRefresh) {
+    const sel = $("#beatport-genre");
+    const slug = sel && sel.value;
+    if (!slug) return;
+    const genreName = (sel.selectedOptions[0] && sel.selectedOptions[0].textContent) || slug;
+    currentGenreSlug = slug;
+    currentGenreName = genreName;
+
+    setStatus(forceRefresh ? "Ricarico Top 100 (bypass cache)…" : "Caricamento Top 100…", "loading");
+    $("#beatport-table").hidden = true;
+    $("#beatport-toolbar").hidden = true;
+    $("#beatport-table").querySelector("tbody").innerHTML = "";
+
+    let res;
+    try {
+      res = await window.pywebview.api.beatport_fetch_chart(slug, !!forceRefresh);
+    } catch (e) {
+      setStatus("Errore: " + ((e && e.message) || e), "error");
+      return;
+    }
+    if (!res || !res.ok) {
+      const code = res && res.error;
+      let msg = (res && res.message) || "Errore sconosciuto";
+      if (code === "invalid_genre") msg = "Genere non valido";
+      else if (code === "unreachable") msg = "Beatport non raggiungibile — riprova più tardi";
+      else if (code === "parse") msg = "Impossibile leggere i dati (schema pagina cambiato?)";
+      setStatus(msg, "error");
+      return;
+    }
+
+    currentTracks = res.tracks || [];
+    try {
+      existing = await window.pywebview.api.beatport_check_existing(currentTracks, currentGenreName);
+    } catch (_e) {
+      existing = currentTracks.map(() => false);
+    }
+    setStatus(`${currentTracks.length} brani caricati`, "ok");
+    renderTable();
+  }
+
+  function renderTable() {
+    const table = $("#beatport-table");
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+
+    currentTracks.forEach((t, i) => {
+      const tr = document.createElement("tr");
+      if (existing[i]) tr.classList.add("already-downloaded");
+
+      const tdCheck = document.createElement("td");
+      tdCheck.className = "col-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.idx = String(i);
+      cb.checked = !existing[i];
+      cb.addEventListener("change", updateSelectionCount);
+      tdCheck.appendChild(cb);
+      tr.appendChild(tdCheck);
+
+      const tdPos = document.createElement("td");
+      tdPos.className = "col-pos";
+      tdPos.textContent = String(t.position || (i + 1));
+      tr.appendChild(tdPos);
+
+      const tdArtist = document.createElement("td");
+      tdArtist.textContent = t.artists || "";
+      tr.appendChild(tdArtist);
+
+      const tdTitle = document.createElement("td");
+      tdTitle.textContent = t.mix ? `${t.title} (${t.mix})` : (t.title || "");
+      tr.appendChild(tdTitle);
+
+      const tdDur = document.createElement("td");
+      tdDur.className = "col-dur";
+      tdDur.textContent = fmtDur(t.duration_sec);
+      tr.appendChild(tdDur);
+
+      const tdState = document.createElement("td");
+      tdState.className = "col-state";
+      if (existing[i]) tdState.textContent = "✓ già scaricato";
+      tr.appendChild(tdState);
+
+      tbody.appendChild(tr);
+    });
+
+    table.hidden = false;
+    $("#beatport-toolbar").hidden = false;
+    updateOutputInfo();
+    updateSelectionCount();
+  }
+
+  function updateSelectionCount() {
+    const boxes = $$("#beatport-table tbody input[type=checkbox]");
+    const total = boxes.length;
+    const checked = boxes.filter((b) => b.checked).length;
+    $("#beatport-selected-count").textContent = `${checked}/${total} selezionati`;
+    const dlBtn = $("#beatport-download-btn");
+    if (dlBtn) dlBtn.disabled = downloading || checked === 0;
+
+    const master = $("#beatport-select-all");
+    if (master) {
+      if (total === 0) { master.checked = false; master.indeterminate = false; }
+      else if (checked === 0) { master.checked = false; master.indeterminate = false; }
+      else if (checked === total) { master.checked = true; master.indeterminate = false; }
+      else { master.checked = false; master.indeterminate = true; }
+    }
+  }
+
+  function toggleAll(checked) {
+    $$("#beatport-table tbody input[type=checkbox]").forEach((b) => { b.checked = checked; });
+    updateSelectionCount();
+  }
+
+  function appendBeatportLog(msg) {
+    const el = $("#beatport-log");
+    if (!el) return;
+    const cls = classifyLog(msg);
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function startDownload() {
+    const boxes = $$("#beatport-table tbody input[type=checkbox]");
+    const selected = [];
+    boxes.forEach((b) => {
+      if (b.checked) {
+        const idx = parseInt(b.dataset.idx, 10);
+        if (!isNaN(idx) && currentTracks[idx]) selected.push(currentTracks[idx]);
+      }
+    });
+    if (!selected.length) {
+      toast("Seleziona almeno un brano", "error");
+      return;
+    }
+    if (!state.config || !state.config.output_dir) {
+      toast("Imposta la cartella output in Impostazioni", "error");
+      return;
+    }
+
+    downloading = true;
+    $("#beatport-download-btn").disabled = true;
+    $("#beatport-stop-btn").hidden = false;
+    $("#beatport-stop-btn").disabled = false;
+    $("#beatport-log").innerHTML = "";
+    appendBeatportLog(`[INFO] Avvio download di ${selected.length} brani da ${currentGenreName}…`);
+
+    let res;
+    try {
+      res = await window.pywebview.api.beatport_download_selected(selected, currentGenreName);
+    } catch (e) {
+      appendBeatportLog("[ERRORE] " + ((e && e.message) || e));
+      finishDownload();
+      return;
+    }
+    if (!res || !res.ok) {
+      const errMsg = (res && (res.error || res.message)) || "Impossibile avviare il download";
+      appendBeatportLog("[ERRORE] " + errMsg);
+      if (!handleGateBlock(res || {})) toast(errMsg, "error");
+      finishDownload();
+    }
+  }
+
+  async function stopDownload() {
+    try {
+      await window.pywebview.api.stop_download();
+    } catch (e) { console.error(e); }
+  }
+
+  function finishDownload() {
+    downloading = false;
+    $("#beatport-stop-btn").hidden = true;
+    $("#beatport-stop-btn").disabled = true;
+    updateSelectionCount();
+    // Re-check existing per aggiornare i badge "già scaricato"
+    if (currentTracks.length) {
+      window.pywebview.api.beatport_check_existing(currentTracks, currentGenreName)
+        .then((res) => { existing = res || existing; renderTable(); })
+        .catch(() => {});
+    }
+  }
+
+  async function init() {
+    // Popola dropdown generi
+    try {
+      genres = await window.pywebview.api.beatport_genres();
+    } catch (e) {
+      console.error("Beatport: impossibile caricare i generi", e);
+      genres = [];
+    }
+    populateSelect();
+
+    // Ripristina l'ultimo genere selezionato (state.config gia' caricato)
+    const last = (state.config && state.config.beatport_last_genre) || "";
+    const sel = $("#beatport-genre");
+    if (sel && last && genres.some((g) => g.slug === last)) {
+      sel.value = last;
+    }
+    updateOutputInfo();
+
+    // Bind eventi
+    $("#beatport-load-btn").addEventListener("click", (e) => loadChart(e.shiftKey));
+    $("#beatport-download-btn").addEventListener("click", startDownload);
+    $("#beatport-stop-btn").addEventListener("click", stopDownload);
+    $("#beatport-select-all").addEventListener("change", (e) => toggleAll(e.target.checked));
+
+    // Aggancia agli event listener esistenti del canale "download" senza rompere
+    // il comportamento della tab Scarica (wrapping additivo).
+    const origProgress = bridgeHandlers["download:progress"];
+    bridgeHandlers["download:progress"] = (p) => {
+      if (origProgress) origProgress(p);
+      // I contatori del tab Scarica sono aggiornati dall'handler originale;
+      // qui potremmo aggiungere un contatore Beatport, ma i log sono sufficienti.
+    };
+    const origDone = bridgeHandlers["download:done"];
+    bridgeHandlers["download:done"] = (p) => {
+      if (origDone) origDone(p);
+      if (downloading) finishDownload();
+    };
+    const origLog = bridgeHandlers["log"];
+    bridgeHandlers["log"] = ({ view, msg }) => {
+      if (origLog) origLog({ view, msg });
+      if (downloading && view === "download") appendBeatportLog(msg);
+    };
+  }
+
+  return { init };
+})();
 
 // ============================================================
 // Boot
