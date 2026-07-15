@@ -308,21 +308,72 @@ def search_tracks(token: str, query: str, limit: int = 50) -> list:
 
 def _track_to_dict(t: dict) -> dict:
     """Mappa il track object Spotify sul nostro schema uniforme."""
-    images = t.get("album", {}).get("images", []) or []
+    album = t.get("album", {}) or {}
+    images = album.get("images", []) or []
     # Spotify torna 3 taglie ordinate large->small. Prendo la più piccola (~64px)
-    # se disponibile, altrimenti la prima che c'è.
-    image_url = ""
+    # per la thumbnail UI, la più grande (~640px) per il tagging cover.
+    image_url = ""       # ~64px per UI thumbnail
+    cover_url_large = "" # ~640px per tagging ID3
     if images:
         image_url = images[-1].get("url", "") or images[0].get("url", "")
+        cover_url_large = images[0].get("url", "") or image_url
+    # release_date può essere YYYY, YYYY-MM o YYYY-MM-DD in base a release_date_precision
+    release_date = str(album.get("release_date") or "").strip()
+    # track_number (opzionale: presente su brani da album, assente su top-tracks flat)
+    tracknumber = t.get("track_number")
+    # artist_id (primo artista) per fetchare i generi ID3
+    artists_arr = t.get("artists", []) or []
+    artist_id = artists_arr[0].get("id", "") if artists_arr else ""
     return {
         "id": t.get("id", ""),
         "url": t.get("external_urls", {}).get("spotify", ""),
         "name": t.get("name", ""),
-        "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
-        "album": t.get("album", {}).get("name", ""),
+        "artists": ", ".join(a.get("name", "") for a in artists_arr),
+        "album": album.get("name", ""),
         "duration_sec": int(t.get("duration_ms", 0)) // 1000,
         "image_url": image_url,
+        "cover_url_large": cover_url_large,
+        "release_date": release_date,
+        "track_number": int(tracknumber) if tracknumber else 0,
+        "artist_id": artist_id,
     }
+
+
+def get_artist_genres(token: str, artist_id: str) -> list:
+    """Ritorna la lista di generi dell'artista (può essere vuota).
+
+    Silenzia gli errori HTTP: usato per arricchimento best-effort dei tag
+    ID3, non deve mai bloccare il download.
+    """
+    if not artist_id:
+        return []
+    try:
+        resp = requests.get(
+            f"https://api.spotify.com/v1/artists/{artist_id}",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        if resp.status_code != 200:
+            return []
+        return list(resp.json().get("genres") or [])
+    except Exception:
+        return []
+
+
+def enrich_from_youtube_title(token: str, video_title: str) -> dict:
+    """Cerca su Spotify il primo match per il titolo di un video YouTube.
+
+    Ritorna un dict con la stessa shape di _track_to_dict, oppure {} se
+    nessun match / errore. Best-effort per il tagging dei download YouTube.
+    """
+    query = (video_title or "").strip()
+    if not query:
+        return {}
+    try:
+        results = search_tracks(token, query, limit=1)
+    except Exception:
+        return {}
+    return results[0] if results else {}
 
 
 def search_artist_discography(token: str, artist_name: str) -> list:
@@ -385,6 +436,7 @@ def search_artist_discography(token: str, artist_name: str) -> list:
         alb_id = alb.get("id")
         alb_name = alb.get("name", "")
         alb_images = alb.get("images", []) or []
+        alb_release_date = alb.get("release_date", "")
         if not alb_id:
             continue
         time.sleep(0.1)  # rate limit interno
@@ -397,7 +449,11 @@ def search_artist_discography(token: str, artist_name: str) -> list:
         r_at.raise_for_status()
         for t in r_at.json().get("items", []):
             t = dict(t)
-            t.setdefault("album", {"name": alb_name, "images": alb_images})
+            t.setdefault("album", {
+                "name": alb_name,
+                "images": alb_images,
+                "release_date": alb_release_date,
+            })
             collected.append(_track_to_dict(t))
 
     # 5. Dedupe
