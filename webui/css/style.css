@@ -1667,6 +1667,15 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 .beatport-table .col-check { width: 36px; }
+.beatport-table .col-cover { width: 52px; padding: 4px 8px; }
+.beatport-table .col-cover img {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  object-fit: cover;
+  display: block;
+  background: var(--bg-input);
+}
 .beatport-table .col-pos   { width: 40px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .beatport-table .col-dur   { width: 70px; color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
 .beatport-table .col-state { width: 130px; font-size: 12px; }

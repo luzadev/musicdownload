@@ -1297,6 +1297,19 @@ const BeatportUI = (function () {
       tdCheck.appendChild(cb);
       tr.appendChild(tdCheck);
 
+      const tdCover = document.createElement("td");
+      tdCover.className = "col-cover";
+      if (t.image_url) {
+        const img = document.createElement("img");
+        img.src = t.image_url;
+        img.alt = "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = () => { img.style.visibility = "hidden"; };
+        tdCover.appendChild(img);
+      }
+      tr.appendChild(tdCover);
+
       const tdPos = document.createElement("td");
       tdPos.className = "col-pos";
       tdPos.textContent = String(t.position || (i + 1));
@@ -1518,8 +1531,12 @@ const SpotifyUI = (() => {
       const tr = document.createElement("tr");
       tr.dataset.idx = String(i);
       if (already) tr.classList.add("already-downloaded");
+      const coverImg = t.image_url
+        ? `<img src="${_escape(t.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"/>`
+        : "";
       tr.innerHTML = `
         <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-cover">${coverImg}</td>
         <td class="col-pos">${i + 1}</td>
         <td>${_escape(t.artists)}</td>
         <td>${_escape(t.name)}</td>
@@ -1752,8 +1769,12 @@ const YoutubeUI = (() => {
       const tr = document.createElement("tr");
       tr.dataset.idx = String(i);
       if (already) tr.classList.add("already-downloaded");
+      const coverImg = t.image_url
+        ? `<img src="${_escape(t.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"/>`
+        : "";
       tr.innerHTML = `
         <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-cover">${coverImg}</td>
         <td class="col-pos">${i + 1}</td>
         <td>${_escape(t.title)}</td>
         <td>${_escape(t.channel)}</td>

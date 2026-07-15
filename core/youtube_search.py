@@ -62,11 +62,13 @@ def search_youtube(query: str, limit: int = 50) -> list:
             continue
         video_id = e.get("id") or ""
         url = e.get("url") or (f"https://www.youtube.com/watch?v={video_id}" if video_id else "")
+        image_url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else ""
         result.append({
             "id": video_id,
             "url": url,
             "title": e.get("title") or "",
             "channel": e.get("uploader") or e.get("channel") or "",
             "duration_sec": int(e.get("duration") or 0),
+            "image_url": image_url,
         })
     return result

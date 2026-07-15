@@ -308,6 +308,12 @@ def search_tracks(token: str, query: str, limit: int = 50) -> list:
 
 def _track_to_dict(t: dict) -> dict:
     """Mappa il track object Spotify sul nostro schema uniforme."""
+    images = t.get("album", {}).get("images", []) or []
+    # Spotify torna 3 taglie ordinate large->small. Prendo la più piccola (~64px)
+    # se disponibile, altrimenti la prima che c'è.
+    image_url = ""
+    if images:
+        image_url = images[-1].get("url", "") or images[0].get("url", "")
     return {
         "id": t.get("id", ""),
         "url": t.get("external_urls", {}).get("spotify", ""),
@@ -315,6 +321,7 @@ def _track_to_dict(t: dict) -> dict:
         "artists": ", ".join(a.get("name", "") for a in t.get("artists", [])),
         "album": t.get("album", {}).get("name", ""),
         "duration_sec": int(t.get("duration_ms", 0)) // 1000,
+        "image_url": image_url,
     }
 
 
@@ -372,10 +379,12 @@ def search_artist_discography(token: str, artist_name: str) -> list:
     r_alb.raise_for_status()
     albums = r_alb.json().get("items", [])
 
-    # 4. Per ogni album, tracce (album/track object non ha "album" sub-field, iniettiamola)
+    # 4. Per ogni album, tracce (album/track object non ha "album" sub-field, iniettiamola
+    # includendo anche le images dell'album così _track_to_dict riesce a estrarre la cover)
     for alb in albums:
         alb_id = alb.get("id")
         alb_name = alb.get("name", "")
+        alb_images = alb.get("images", []) or []
         if not alb_id:
             continue
         time.sleep(0.1)  # rate limit interno
@@ -388,8 +397,7 @@ def search_artist_discography(token: str, artist_name: str) -> list:
         r_at.raise_for_status()
         for t in r_at.json().get("items", []):
             t = dict(t)
-            # Album tracks non hanno "album" nested; iniettiamo il nome
-            t.setdefault("album", {"name": alb_name})
+            t.setdefault("album", {"name": alb_name, "images": alb_images})
             collected.append(_track_to_dict(t))
 
     # 5. Dedupe

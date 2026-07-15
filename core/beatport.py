@@ -23,6 +23,7 @@ class BeatportTrack:
     artists: str      # es. "A, B & C" già formattato
     duration_sec: int
     beatport_id: int
+    image_url: str = ""   # URL cover art (default vuoto per retrocompatibilità test)
 
     @property
     def display(self) -> str:
@@ -150,6 +151,17 @@ def _format_artists(artists_field: object) -> str:
     return ", ".join(names[:-1]) + " & " + names[-1]
 
 
+def _extract_image_url(image_field: object, size: int = 95) -> str:
+    """Estrae URL cover art dall'oggetto `image` di Beatport.
+    Preferisce `dynamic_uri` sostituendo {w}x{h}, fallback a `uri` fisso."""
+    if not isinstance(image_field, dict):
+        return ""
+    dyn = image_field.get("dynamic_uri") or ""
+    if isinstance(dyn, str) and "{w}" in dyn and "{h}" in dyn:
+        return dyn.replace("{w}", str(size)).replace("{h}", str(size))
+    return image_field.get("uri") or ""
+
+
 def _parse_tracks(data: dict) -> list:
     """Trasforma i track dict di Beatport in BeatportTrack ordinati per posizione."""
     raw = _find_tracks_results(data)
@@ -164,6 +176,7 @@ def _parse_tracks(data: dict) -> list:
                 artists=_format_artists(item.get("artists")),
                 duration_sec=length_ms // 1000,
                 beatport_id=int(item.get("id") or 0),
+                image_url=_extract_image_url(item.get("image")),
             )
         except (TypeError, ValueError) as e:
             raise BeatportParseError(f"track[{i}] shape inattesa: {e}") from e
