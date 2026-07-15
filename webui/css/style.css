@@ -333,7 +333,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
    HERO
    =============================== */
 .hero {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 5;
   border-radius: var(--r-lg);
   padding: 28px 32px;
   margin-bottom: 24px;
