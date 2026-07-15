@@ -121,6 +121,8 @@ def download_playlist(
     bitrate: str = "320K",
     cookies_path: Optional[str] = None,
     progress_callback: Optional[Callable] = None,
+    output_filenames: Optional[list] = None,
+    post_download_callback: Optional[Callable] = None,
 ) -> None:
     """Scarica tutti i brani dalla lista di tracce.
 
@@ -130,6 +132,12 @@ def download_playlist(
         bitrate: qualita audio (es. "320K")
         cookies_path: percorso file cookies (opzionale)
         progress_callback: callback(track_index, total, track_name, status, percent)
+        output_filenames: opzionale, parallelo a `tracks`. Se presente e non
+            vuoto per l'indice i, yt-dlp scrive `<output_filenames[i]>.mp3`
+            invece di usare il titolo YouTube. Passa gia' sanitizzato.
+        post_download_callback: opzionale, chiamato come `(i, filepath)`
+            dopo yt-dlp exit 0 con il path effettivo del file .mp3 salvato.
+            Usato per tagging ID3 post-download.
     """
     reset_stop()
     total = len(tracks)
@@ -183,6 +191,15 @@ def download_playlist(
         if progress_callback:
             progress_callback(i, total, query, "downloading", 0)
 
+        # Nome file custom (per tagging: "Artista - Titolo") oppure titolo YouTube grezzo
+        custom_stem = ""
+        if output_filenames and i < len(output_filenames):
+            custom_stem = (output_filenames[i] or "").strip()
+        if custom_stem:
+            out_template = str(Path(output_dir) / f"{custom_stem}.%(ext)s")
+        else:
+            out_template = str(Path(output_dir) / "%(title)s.%(ext)s")
+
         # Scarica con yt-dlp subprocess
         cmd = [
             ytdlp,
@@ -193,7 +210,7 @@ def download_playlist(
             "--add-metadata",
             "--no-check-certificates",
             "--newline",
-            "--output", str(Path(output_dir) / "%(title)s.%(ext)s"),
+            "--output", out_template,
             video_url,
         ]
         ffmpeg_dir = find_ffmpeg_dir()
@@ -231,6 +248,12 @@ def download_playlist(
                 _mark_done(done_file, query)
                 done_set.add(query)
                 existing_files = _scan_existing_files(out_path)
+                if post_download_callback and custom_stem:
+                    mp3_path = Path(output_dir) / f"{custom_stem}.mp3"
+                    try:
+                        post_download_callback(i, str(mp3_path))
+                    except Exception:
+                        pass
                 if progress_callback:
                     progress_callback(i, total, query, "done", 100)
             else:
@@ -406,6 +429,8 @@ def download_urls(
     bitrate: str = "320K",
     cookies_path: Optional[str] = None,
     progress_callback: Optional[Callable] = None,
+    output_filenames: Optional[list] = None,
+    post_download_callback: Optional[Callable] = None,
 ) -> None:
     """Scarica direttamente da URL YouTube (bypassa search).
 
@@ -420,6 +445,12 @@ def download_urls(
         bitrate: qualita audio (default 320K)
         cookies_path: file cookies opzionale
         progress_callback: callback(idx, total, title, status, percent)
+        output_filenames: opzionale, parallelo a `urls`. Se presente e non
+            vuoto per l'indice i, yt-dlp scrive `<output_filenames[i]>.mp3`
+            invece di usare il titolo YouTube. Passa gia' sanitizzato.
+        post_download_callback: opzionale, chiamato come `(i, filepath)`
+            dopo yt-dlp exit 0 con il path effettivo del file .mp3 salvato.
+            Usato per tagging ID3 post-download.
     """
     global _current_process
     reset_stop()
@@ -456,6 +487,15 @@ def download_urls(
         if progress_callback:
             progress_callback(i, total, key, "downloading", 0)
 
+        # Nome file custom (per tagging: "Artista - Titolo") oppure titolo YouTube grezzo
+        custom_stem = ""
+        if output_filenames and i < len(output_filenames):
+            custom_stem = (output_filenames[i] or "").strip()
+        if custom_stem:
+            out_template = str(Path(output_dir) / f"{custom_stem}.%(ext)s")
+        else:
+            out_template = str(Path(output_dir) / "%(title)s.%(ext)s")
+
         cmd = [
             ytdlp,
             "--extract-audio",
@@ -465,7 +505,7 @@ def download_urls(
             "--add-metadata",
             "--no-check-certificates",
             "--newline",
-            "--output", str(Path(output_dir) / "%(title)s.%(ext)s"),
+            "--output", out_template,
             url,
         ]
         ffmpeg_dir = find_ffmpeg_dir()
@@ -502,6 +542,12 @@ def download_urls(
                 _mark_done(done_file, key)
                 done_set.add(key)
                 existing_files = _scan_existing_files(out_path)
+                if post_download_callback and custom_stem:
+                    mp3_path = Path(output_dir) / f"{custom_stem}.mp3"
+                    try:
+                        post_download_callback(i, str(mp3_path))
+                    except Exception:
+                        pass
                 if progress_callback:
                     progress_callback(i, total, key, "done", 100)
             else:
