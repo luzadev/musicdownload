@@ -10,7 +10,7 @@ import time
 import webbrowser
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 import requests
 
@@ -32,6 +32,7 @@ from core.spotify_client import (
     SpotifyAuthRequired,
 )
 from core.metadata import read_metadata, write_metadata, SUPPORTED_EXTS
+from core import tagger
 from core.recorder import (
     list_input_devices,
     start_recording,
@@ -516,13 +517,20 @@ class Api:
     def start_tracks_download(self, payload: dict) -> dict:
         """Avvia il download di una tracklist gia parsata
         (lista di {name, artist}). Se 'subfolder' e presente,
-        scarica in output_dir/subfolder."""
+        scarica in output_dir/subfolder.
+
+        `payload['metadata']` opzionale: lista parallela a `tracks` con dict
+        per il tagging ID3 (title, artist, album, date, genre, tracknumber,
+        cover_url). Se presente, i file MP3 vengono nominati come
+        "Artista - Titolo.mp3" e taggati post-download.
+        """
         if self._any_job_running():
             return {"ok": False, "error": "Un download gia in corso"}
 
         tracks = payload.get("tracks") or []
         output_dir = (payload.get("output_dir") or "").strip()
         subfolder = (payload.get("subfolder") or "").strip()
+        metadata_list = payload.get("metadata") or None
         if not tracks:
             return {"ok": False, "error": "Nessuna traccia fornita"}
         if not output_dir:
@@ -541,6 +549,7 @@ class Api:
         self._download_thread = threading.Thread(
             target=self._tracks_worker,
             args=(list(tracks), output_dir),
+            kwargs={"metadata_list": list(metadata_list) if metadata_list else None},
             daemon=True,
         )
         self._download_thread.start()
@@ -548,7 +557,13 @@ class Api:
 
     def start_urls_download(self, payload: dict) -> dict:
         """Analogo a start_tracks_download ma accetta URL YouTube gia noti
-        (bypass search). Usato dal flow del tab 'YouTube Search'."""
+        (bypass search). Usato dal flow del tab 'YouTube Search'.
+
+        `payload['metadata']` opzionale: lista parallela a `urls` con dict
+        per il tagging ID3 (title, artist, album, date, genre, tracknumber,
+        cover_url). Se presente, i file MP3 vengono nominati come
+        "Artista - Titolo.mp3" e taggati post-download.
+        """
         if self._any_job_running():
             return {"ok": False, "error": "Un download gia in corso"}
 
@@ -556,6 +571,7 @@ class Api:
         titles = payload.get("titles") or []
         output_dir = (payload.get("output_dir") or "").strip()
         subfolder = (payload.get("subfolder") or "").strip()
+        metadata_list = payload.get("metadata") or None
         if not urls:
             return {"ok": False, "error": "Nessuna URL fornita"}
         if len(urls) != len(titles):
@@ -575,6 +591,7 @@ class Api:
         self._download_thread = threading.Thread(
             target=self._urls_worker,
             args=(list(urls), list(titles), output_dir),
+            kwargs={"metadata_list": list(metadata_list) if metadata_list else None},
             daemon=True,
         )
         self._download_thread.start()
@@ -585,7 +602,8 @@ class Api:
         self._log("download", "[INFO] Interruzione richiesta...")
         return {"ok": True}
 
-    def _tracks_worker(self, tracks: list, output_dir: str) -> None:
+    def _tracks_worker(self, tracks: list, output_dir: str,
+                        metadata_list: Optional[list] = None) -> None:
         reset_download_stop()
         cfg = load_config()
         bitrate = cfg.get("bitrate", "320K")
@@ -594,6 +612,31 @@ class Api:
 
         self._log(view, f"[INFO] Tracklist: {len(tracks)} brani da cercare su YouTube")
         self._log(view, f"[INFO] Destinazione: {output_dir}")
+
+        # Pipeline tagging: se metadata_list fornito, calcola i filename
+        # ("Artista - Titolo") e prepara callback per scrivere ID3 tag
+        # + cover art dopo ogni download riuscito.
+        output_filenames: Optional[list] = None
+        post_cb: Optional[Callable] = None
+        if metadata_list:
+            output_filenames = []
+            for md in metadata_list:
+                md = md or {}
+                stem = tagger.build_filename_stem(
+                    md.get("artist", ""),
+                    md.get("title", ""),
+                )
+                output_filenames.append(stem)
+
+            def post_cb(idx: int, filepath: str,
+                        _md_list=metadata_list) -> None:
+                if idx < 0 or idx >= len(_md_list):
+                    return
+                md = _md_list[idx] or {}
+                try:
+                    tagger.write_tags(filepath, md)
+                except Exception:
+                    pass  # tagging best-effort, non blocca il download
 
         _last = [0.0]
         _THROTTLE = 0.10
@@ -634,10 +677,15 @@ class Api:
 
             self._emit("download:progress", payload_evt)
 
-        download_playlist(tracks, output_dir, bitrate, cookies_path, progress_cb)
+        download_playlist(
+            tracks, output_dir, bitrate, cookies_path, progress_cb,
+            output_filenames=output_filenames,
+            post_download_callback=post_cb,
+        )
         self._emit("download:done", {"ok": True})
 
-    def _urls_worker(self, urls: list, titles: list, output_dir: str) -> None:
+    def _urls_worker(self, urls: list, titles: list, output_dir: str,
+                      metadata_list: Optional[list] = None) -> None:
         from core.downloader import download_urls
         reset_download_stop()
         cfg = load_config()
@@ -647,6 +695,29 @@ class Api:
 
         self._log(view, f"[INFO] URL list: {len(urls)} da scaricare da YouTube")
         self._log(view, f"[INFO] Destinazione: {output_dir}")
+
+        # Stessa pipeline tagging di _tracks_worker
+        output_filenames: Optional[list] = None
+        post_cb: Optional[Callable] = None
+        if metadata_list:
+            output_filenames = []
+            for md in metadata_list:
+                md = md or {}
+                stem = tagger.build_filename_stem(
+                    md.get("artist", ""),
+                    md.get("title", ""),
+                )
+                output_filenames.append(stem)
+
+            def post_cb(idx: int, filepath: str,
+                        _md_list=metadata_list) -> None:
+                if idx < 0 or idx >= len(_md_list):
+                    return
+                md = _md_list[idx] or {}
+                try:
+                    tagger.write_tags(filepath, md)
+                except Exception:
+                    pass  # tagging best-effort, non blocca il download
 
         _last = [0.0]
         _THROTTLE = 0.10
@@ -681,7 +752,11 @@ class Api:
 
             self._emit("download:progress", payload_evt)
 
-        download_urls(urls, titles, output_dir, bitrate, cookies_path, progress_cb)
+        download_urls(
+            urls, titles, output_dir, bitrate, cookies_path, progress_cb,
+            output_filenames=output_filenames,
+            post_download_callback=post_cb,
+        )
         self._emit("download:done", {"ok": True})
 
     def _download_worker(self, urls: list, output_dir: str) -> None:
@@ -1167,7 +1242,13 @@ class Api:
         return result
 
     def spotify_search_download(self, tracks: list) -> dict:
-        """Scarica i track Spotify selezionati (name+artist → YouTube search)."""
+        """Scarica i track Spotify selezionati (name+artist → YouTube search).
+
+        Costruisce anche `metadata` (una entry per track) per il tagging ID3
+        + cover art post-download. Se le creds Spotify sono presenti,
+        arricchisce con i generi dell'artista (cache locale per artist_id
+        per evitare N+1 chiamate).
+        """
         cfg = load_config()
         out_root = (cfg.get("output_dir") or "").strip()
         if not out_root:
@@ -1176,13 +1257,47 @@ class Api:
         target = self._music_output_dir(out_root, "Spotify")
         subfolder = target.name
 
-        converted = []
+        # Tentativo di token Spotify per fetch generi (best-effort, opzionale)
+        cid = (cfg.get("client_id") or "").strip()
+        secret = (cfg.get("client_secret") or "").strip()
+        token: Optional[str] = None
+        if cid and secret:
+            try:
+                token = spotify_client.get_access_token(cid, secret)
+            except Exception:
+                token = None
+
+        genre_cache: dict = {}  # artist_id -> [genres]
+
+        converted: list = []
+        metadata: list = []
         for t in tracks:
             title = (t.get("name") or "").strip()
             artists = (t.get("artists") or "").strip()
             if not title:
                 continue
             converted.append({"name": title, "artist": artists})
+
+            # Genere: primo genere dell'artista (se disponibile e token OK)
+            genre = ""
+            artist_id = (t.get("artist_id") or "").strip()
+            if token and artist_id:
+                if artist_id not in genre_cache:
+                    genre_cache[artist_id] = spotify_client.get_artist_genres(token, artist_id)
+                genres = genre_cache.get(artist_id) or []
+                if genres:
+                    genre = genres[0]
+
+            tn = t.get("track_number") or 0
+            metadata.append({
+                "title": title,
+                "artist": artists,
+                "album": (t.get("album") or "").strip(),
+                "date": (t.get("release_date") or "").strip(),
+                "genre": genre,
+                "tracknumber": str(tn) if tn else "",
+                "cover_url": (t.get("cover_url_large") or t.get("image_url") or "").strip(),
+            })
 
         if not converted:
             return {"ok": False, "error": "Nessun brano valido"}
@@ -1191,6 +1306,7 @@ class Api:
             "tracks": converted,
             "output_dir": out_root,
             "subfolder": subfolder,
+            "metadata": metadata,
         })
 
     # ---- YouTube ----
@@ -1242,7 +1358,14 @@ class Api:
         return result
 
     def youtube_search_download(self, tracks: list) -> dict:
-        """Scarica direttamente gli URL YouTube selezionati (no re-search)."""
+        """Scarica direttamente gli URL YouTube selezionati (no re-search).
+
+        Per ogni video prova a dedurre i metadati:
+        1) Se le creds Spotify sono presenti, cerca il titolo su Spotify
+           e usa i tag Spotify se c'è un match (best-effort).
+        2) Altrimenti fallback: parsing "Artista - Titolo" dal titolo del
+           video; uploader come fallback per l'album.
+        """
         cfg = load_config()
         out_root = (cfg.get("output_dir") or "").strip()
         if not out_root:
@@ -1251,8 +1374,21 @@ class Api:
         target = self._music_output_dir(out_root, "YouTube")
         subfolder = target.name
 
+        # Token Spotify opzionale per enrichment
+        cid = (cfg.get("client_id") or "").strip()
+        secret = (cfg.get("client_secret") or "").strip()
+        token: Optional[str] = None
+        if cid and secret:
+            try:
+                token = spotify_client.get_access_token(cid, secret)
+            except Exception:
+                token = None
+
+        genre_cache: dict = {}  # artist_id -> [genres]
+
         urls: list = []
         titles: list = []
+        metadata: list = []
         for t in tracks:
             url = (t.get("url") or "").strip()
             title = (t.get("title") or "").strip()
@@ -1260,6 +1396,51 @@ class Api:
                 continue
             urls.append(url)
             titles.append(title)
+
+            md: dict = {}
+            # 1) Enrichment via Spotify search (se token)
+            if token:
+                sp = spotify_client.enrich_from_youtube_title(token, title)
+                if sp:
+                    # Genere: opzionale
+                    genre = ""
+                    artist_id = (sp.get("artist_id") or "").strip()
+                    if artist_id:
+                        if artist_id not in genre_cache:
+                            genre_cache[artist_id] = spotify_client.get_artist_genres(token, artist_id)
+                        genres = genre_cache.get(artist_id) or []
+                        if genres:
+                            genre = genres[0]
+                    tn = sp.get("track_number") or 0
+                    md = {
+                        "title": (sp.get("name") or "").strip(),
+                        "artist": (sp.get("artists") or "").strip(),
+                        "album": (sp.get("album") or "").strip(),
+                        "date": (sp.get("release_date") or "").strip(),
+                        "genre": genre,
+                        "tracknumber": str(tn) if tn else "",
+                        "cover_url": (sp.get("cover_url_large") or sp.get("image_url") or "").strip(),
+                    }
+
+            # 2) Fallback: parsing del titolo YouTube
+            if not md.get("title") or not md.get("artist"):
+                parsed = _parse_track_line(title)
+                if parsed:
+                    fb_artist = parsed["artist"]
+                    fb_title = parsed["name"]
+                else:
+                    fb_artist = ""
+                    fb_title = title
+                md = {
+                    "title": fb_title,
+                    "artist": fb_artist,
+                    "album": (t.get("channel") or "").strip(),
+                    "date": (t.get("release_date") or "").strip(),
+                    "genre": "",
+                    "tracknumber": "",
+                    "cover_url": (t.get("image_url") or "").strip(),
+                }
+            metadata.append(md)
 
         if not urls:
             return {"ok": False, "error": "Nessun URL valido"}
@@ -1269,4 +1450,5 @@ class Api:
             "titles": titles,
             "output_dir": out_root,
             "subfolder": subfolder,
+            "metadata": metadata,
         })
