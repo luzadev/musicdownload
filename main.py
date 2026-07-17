@@ -4,6 +4,21 @@ import os
 import sys
 from pathlib import Path
 
+# ============================================================
+# Fix SSL CA bundle: quando l'app e' frozen (PyInstaller) i moduli
+# ssl e requests non trovano nessun CA bundle di default -> tutte
+# le chiamate HTTPS falliscono con CERTIFICATE_VERIFY_FAILED.
+# Puntiamo esplicitamente al bundle di certifi (che il build script
+# include via `--collect-data certifi`).
+# ============================================================
+try:
+    import certifi as _certifi
+    _ca_bundle = _certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE", _ca_bundle)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", _ca_bundle)
+except Exception as _e:
+    print(f"[bootstrap] certifi setup failed: {_e}")
+
 # Windows: forza il caricamento del runtime pythonnet PRIMA di importare
 # webview. Con PyInstaller il lazy-loader fallisce con
 # "Failed to resolve Python.Runtime.Loader.Initialize" perche'

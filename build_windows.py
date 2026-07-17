@@ -133,6 +133,8 @@ def run_pyinstaller():
         "--collect-all", "pythonnet",
         "--collect-all", "clr_loader",
         "--collect-all", "mutagen",
+        # certifi ha il file dati cacert.pem necessario per SSL/HTTPS
+        "--collect-data", "certifi",
         # collect-data prende anche i file .json/.dll non-Python che
         # collect-all potrebbe saltare (Python.Runtime.runtimeconfig.json
         # in particolare).
