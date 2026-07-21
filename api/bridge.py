@@ -1452,3 +1452,160 @@ class Api:
             "subfolder": subfolder,
             "metadata": metadata,
         })
+
+    # ================================================================
+    # WAV -> MP3 converter
+    # ================================================================
+    def convert_pick_wav_files(self) -> list:
+        """Apre file picker multi-selezione per .wav. Ritorna list di path."""
+        if not self.window:
+            return []
+        try:
+            filetypes = ("WAV files (*.wav)",)
+            result = self.window.create_file_dialog(
+                self._open_dialog_type(),
+                allow_multiple=True,
+                file_types=filetypes,
+            )
+        except Exception:
+            return []
+        if not result:
+            return []
+        return [str(p) for p in result if str(p).lower().endswith(".wav")]
+
+    def convert_pick_wav_folder(self, recursive: bool = True) -> list:
+        """Apre folder picker, scan .wav (opzionalmente ricorsivo)."""
+        from core import converter
+        if not self.window:
+            return []
+        try:
+            result = self.window.create_file_dialog(self._folder_dialog_type())
+        except Exception:
+            return []
+        if not result:
+            return []
+        folder = str(result[0]) if isinstance(result, (list, tuple)) else str(result)
+        return converter.list_wav_files(folder, recursive=recursive)
+
+    def convert_start(self, payload: dict) -> dict:
+        """Avvia conversione batch. Payload:
+            {files: [str], bitrate: int, vbr: bool, output_dir: str | None}
+        Se output_dir e vuoto/None, il .mp3 va accanto al .wav.
+        """
+        if self._any_job_running():
+            return {"ok": False, "error": "Un'operazione e' gia in corso"}
+
+        files = payload.get("files") or []
+        if not files:
+            return {"ok": False, "error": "Nessun file selezionato"}
+
+        try:
+            bitrate = int(payload.get("bitrate", 320))
+        except (TypeError, ValueError):
+            bitrate = 320
+        if bitrate not in (128, 192, 256, 320):
+            return {"ok": False, "error": "Bitrate non valido"}
+        vbr = bool(payload.get("vbr", False))
+        output_dir = (payload.get("output_dir") or "").strip() or None
+
+        gate = self._gate("audio")
+        if gate:
+            return gate
+
+        self._download_thread = threading.Thread(
+            target=self._convert_worker,
+            args=(list(files), bitrate, vbr, output_dir),
+            daemon=True,
+        )
+        self._download_thread.start()
+        return {"ok": True}
+
+    def convert_stop(self) -> dict:
+        from core import converter as conv
+        conv.request_stop()
+        self._log("convert", "[INFO] Interruzione richiesta...")
+        return {"ok": True}
+
+    def _convert_worker(self, files: list, bitrate: int, vbr: bool,
+                        output_dir: Optional[str]) -> None:
+        from core import converter as conv
+        conv.reset_stop()
+        view = "convert"
+        total = len(files)
+        mode = "VBR" if vbr else "CBR"
+
+        self._log(view, f"[INFO] Conversione di {total} file (MP3 {bitrate}k {mode})")
+        if output_dir:
+            self._log(view, f"[INFO] Destinazione: {output_dir}")
+        else:
+            self._log(view, "[INFO] Destinazione: accanto al file originale")
+
+        _last = [0.0]
+
+        def make_progress_cb(idx: int, filename: str):
+            def cb(pct: int):
+                import time as _t
+                if pct == -1:
+                    # interruzione
+                    self._emit("convert:progress", {
+                        "idx": idx, "total": total, "file": filename,
+                        "status": "stopped", "pct": 0,
+                    })
+                    return
+                # throttle
+                now = _t.monotonic()
+                if pct < 100 and now - _last[0] < 0.10:
+                    return
+                _last[0] = now
+                self._emit("convert:progress", {
+                    "idx": idx, "total": total, "file": filename,
+                    "status": "converting" if pct < 100 else "done",
+                    "pct": pct,
+                    "overall": min(((idx + pct / 100) / total), 1.0) if total else 0,
+                })
+            return cb
+
+        for i, src_path in enumerate(files):
+            if conv.is_stopped():
+                self._log(view, "[INFO] Conversione interrotta.")
+                break
+
+            src = Path(src_path)
+            if not src.exists():
+                self._log(view, f"[ERRORE] File mancante: {src.name}")
+                continue
+
+            dst_dir = Path(output_dir) if output_dir else src.parent
+            dst = dst_dir / (src.stem + ".mp3")
+
+            # Skip se il .mp3 esiste gia (protezione contro overwrite)
+            if dst.exists():
+                self._log(view, f"[SKIP] {dst.name} esiste gia'")
+                self._emit("convert:progress", {
+                    "idx": i, "total": total, "file": src.name,
+                    "status": "skipped", "pct": 100,
+                    "overall": min(((i + 1) / total), 1.0) if total else 1,
+                })
+                continue
+
+            self._log(view, f"[CONVERTI] {src.name}")
+            self._emit("convert:progress", {
+                "idx": i, "total": total, "file": src.name,
+                "status": "converting", "pct": 0,
+            })
+
+            try:
+                conv.convert_wav_to_mp3(
+                    str(src), str(dst),
+                    bitrate=bitrate, vbr=vbr,
+                    progress_callback=make_progress_cb(i, src.name),
+                )
+                self._log(view, f"[OK] {dst.name}")
+            except Exception as e:
+                self._log(view, f"[ERRORE] {src.name}: {e}")
+                self._emit("convert:progress", {
+                    "idx": i, "total": total, "file": src.name,
+                    "status": f"error: {e}", "pct": 0,
+                })
+
+        self._emit("convert:done", {"ok": True})
