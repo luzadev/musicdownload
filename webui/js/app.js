@@ -399,6 +399,7 @@ const logEls = {
   video: () => $("#videoLog"),
   spotify: () => $("#spotify-log"),
   youtube: () => $("#youtube-log"),
+  convert: () => $("#convert-log"),
 };
 
 function classifyLog(msg) {
@@ -510,6 +511,9 @@ async function init() {
   // Spotify + YouTube search tabs
   await SpotifyUI.init();
   await YoutubeUI.init();
+
+  // WAV -> MP3 converter tab
+  await ConvertUI.init();
 }
 
 async function refreshRecDevices() {
@@ -1943,6 +1947,228 @@ const YoutubeUI = (() => {
       if (origDone) origDone(payload);
       if (mstate.downloading) finishDownload();
     };
+  }
+
+  return { init };
+})();
+
+// =====================================================================
+// Converti (WAV -> MP3)
+// =====================================================================
+const ConvertUI = (() => {
+  const mstate = { files: [], selected: new Set(), running: false, outputDir: "" };
+
+  function _escape(s) {
+    const d = document.createElement("div");
+    d.textContent = s == null ? "" : String(s);
+    return d.innerHTML;
+  }
+
+  function renderTable() {
+    const tbody = $("#convert-tbody");
+    if (!tbody) return;
+    tbody.innerHTML = "";
+    mstate.files.forEach((f, i) => {
+      const tr = document.createElement("tr");
+      tr.dataset.idx = String(i);
+      const checked = mstate.selected.has(i) ? "checked" : "";
+      const baseName = f.split(/[\/\\]/).pop();
+      tr.innerHTML = `
+        <td class="col-check"><input type="checkbox" data-idx="${i}" ${checked} /></td>
+        <td class="col-pos">${i + 1}</td>
+        <td title="${_escape(f)}">${_escape(baseName)}</td>
+        <td class="col-state" data-idx="${i}"></td>
+      `;
+      tr.querySelector("input[type=checkbox]").addEventListener("change", (e) => {
+        if (e.target.checked) mstate.selected.add(i);
+        else mstate.selected.delete(i);
+        updateSelectionCount();
+      });
+      tbody.appendChild(tr);
+    });
+    $("#convert-table-wrap").hidden = mstate.files.length === 0;
+    updateSelectionCount();
+  }
+
+  function updateSelectionCount() {
+    const total = mstate.files.length;
+    const sel = mstate.selected.size;
+    $("#convert-selected-count").textContent = `${sel}/${total} selezionati`;
+    $("#convert-run-btn").disabled = mstate.running || sel === 0;
+    const sa = $("#convert-select-all");
+    if (sa) {
+      sa.indeterminate = sel > 0 && sel < total;
+      sa.checked = sel === total && total > 0;
+    }
+  }
+
+  function appendFiles(newFiles) {
+    // Dedup + append
+    const existing = new Set(mstate.files);
+    for (const f of newFiles) {
+      if (!existing.has(f)) {
+        mstate.files.push(f);
+        mstate.selected.add(mstate.files.length - 1);
+        existing.add(f);
+      }
+    }
+    renderTable();
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#convert-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  async function pickFiles() {
+    const files = await window.pywebview.api.convert_pick_wav_files();
+    if (Array.isArray(files) && files.length) {
+      appendFiles(files);
+      setStatus("", "");
+    } else {
+      setStatus("Nessun file .wav selezionato", "");
+    }
+  }
+
+  async function pickFolder() {
+    setStatus("Scansione cartella...", "loading");
+    const files = await window.pywebview.api.convert_pick_wav_folder(true);
+    if (Array.isArray(files) && files.length) {
+      appendFiles(files);
+      setStatus(`Trovati ${files.length} file .wav`, "ok");
+    } else {
+      setStatus("Nessun file .wav trovato nella cartella", "");
+    }
+  }
+
+  function clearFiles() {
+    mstate.files = [];
+    mstate.selected.clear();
+    renderTable();
+    setStatus("", "");
+    $("#convert-log").innerHTML = "";
+  }
+
+  async function browseOutput() {
+    const p = await window.pywebview.api.browse_directory();
+    if (p && typeof p === "string") {
+      mstate.outputDir = p;
+      $("#convert-out-path").textContent = p;
+      $("#convert-out-custom").checked = true;
+    }
+  }
+
+  function appendConvertLog(msg) {
+    const el = $("#convert-log");
+    if (!el) return;
+    const cls = classifyLog(msg);
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function updateStateCell(idx, text, cls) {
+    const td = document.querySelector(`#convert-tbody td.col-state[data-idx="${idx}"]`);
+    if (!td) return;
+    td.textContent = text;
+    td.style.color = cls === "err" ? "var(--red)" : (cls === "ok" ? "var(--green-text)" : "");
+  }
+
+  async function startConversion() {
+    const files = [...mstate.selected].sort((a, b) => a - b).map((i) => mstate.files[i]);
+    if (!files.length) return;
+    const bitrate = parseInt($("#convert-bitrate").value, 10);
+    const vbr = $("#convert-vbr").checked;
+    const useCustom = $("#convert-out-custom").checked;
+    const output_dir = useCustom ? (mstate.outputDir || "") : "";
+    if (useCustom && !output_dir) {
+      setStatus("Scegli una cartella di destinazione", "error");
+      return;
+    }
+
+    mstate.running = true;
+    $("#convert-run-btn").disabled = true;
+    $("#convert-stop-btn").hidden = false;
+    $("#convert-log").innerHTML = "";
+    // Reset state cells
+    $$("#convert-tbody td.col-state").forEach((td) => {
+      td.textContent = "";
+      td.style.color = "";
+    });
+
+    let res;
+    try {
+      res = await window.pywebview.api.convert_start({ files, bitrate, vbr, output_dir });
+    } catch (e) {
+      appendConvertLog("[ERRORE] " + ((e && e.message) || e));
+      finishConversion();
+      return;
+    }
+    if (!res || !res.ok) {
+      const errMsg = (res && res.error) || "Impossibile avviare";
+      appendConvertLog("[ERRORE] " + errMsg);
+      if (!handleGateBlock(res || {})) toast(errMsg, "error");
+      finishConversion();
+    }
+  }
+
+  async function stopConversion() {
+    try { await window.pywebview.api.convert_stop(); } catch (e) { console.error(e); }
+  }
+
+  function finishConversion() {
+    mstate.running = false;
+    $("#convert-run-btn").disabled = mstate.selected.size === 0;
+    $("#convert-stop-btn").hidden = true;
+  }
+
+  async function init() {
+    // Bind eventi
+    $("#convert-pick-files").addEventListener("click", pickFiles);
+    $("#convert-pick-folder").addEventListener("click", pickFolder);
+    $("#convert-clear").addEventListener("click", clearFiles);
+    $("#convert-out-browse").addEventListener("click", browseOutput);
+    $("#convert-out-custom").addEventListener("change", () => {
+      $("#convert-out-browse").disabled = false;
+    });
+    $("#convert-out-same").addEventListener("change", () => {
+      $("#convert-out-browse").disabled = true;
+    });
+    $("#convert-select-all").addEventListener("change", (e) => {
+      mstate.selected.clear();
+      if (e.target.checked) {
+        for (let i = 0; i < mstate.files.length; i++) mstate.selected.add(i);
+      }
+      renderTable();
+    });
+    $("#convert-run-btn").addEventListener("click", startConversion);
+    $("#convert-stop-btn").addEventListener("click", stopConversion);
+
+    // Bridge handlers per il canale "convert"
+    const origProgress = bridgeHandlers["convert:progress"];
+    bridgeHandlers["convert:progress"] = (p) => {
+      if (origProgress) origProgress(p);
+      if (!p) return;
+      if (p.status === "done") updateStateCell(p.idx, "✓ fatto", "ok");
+      else if (p.status === "skipped") updateStateCell(p.idx, "già esiste", "");
+      else if (p.status === "stopped") updateStateCell(p.idx, "interrotto", "");
+      else if (typeof p.status === "string" && p.status.startsWith("error")) updateStateCell(p.idx, "✗ errore", "err");
+      else if (p.status === "converting") updateStateCell(p.idx, `${p.pct || 0}%`, "");
+    };
+    const origDone = bridgeHandlers["convert:done"];
+    bridgeHandlers["convert:done"] = (p) => {
+      if (origDone) origDone(p);
+      if (mstate.running) {
+        appendConvertLog("[INFO] Conversione terminata.");
+        finishConversion();
+      }
+    };
+    // Il canale "log" e' gia gestito da logEls.convert (aggiunto sopra), quindi
+    // non serve wrap qui: appendLog(view=convert, msg) targeta #convert-log.
   }
 
   return { init };
