@@ -41,6 +41,10 @@
           <span class="nav-icon">▶</span>
           <span>YouTube</span>
         </button>
+        <button class="nav-item" data-view="convert" data-feature="audio">
+          <span class="nav-icon">🔄</span>
+          <span>Converti</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -1035,6 +1039,88 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="youtube-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: CONVERTI (WAV -> MP3) ===== -->
+      <section class="view" id="view-convert">
+        <header class="hero hero-purple">
+          <div class="hero-content">
+            <div class="hero-eyebrow purple">WAV → MP3</div>
+            <h1 class="hero-title">Converti file WAV in MP3</h1>
+            <p class="hero-subtitle">Bitrate configurabile, CBR o VBR, output accanto al file o in cartella custom.</p>
+          </div>
+          <div class="hero-deco">🔄</div>
+        </header>
+
+        <h2 class="section-label">Sorgente</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <button id="convert-pick-files" class="btn btn-primary pill">📄 Scegli file .wav</button>
+            <button id="convert-pick-folder" class="btn btn-ghost pill">📁 Scegli cartella</button>
+            <button id="convert-clear" class="btn btn-ghost pill">Svuota</button>
+          </div>
+
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              Bitrate:
+              <select id="convert-bitrate" class="input pill input-sm">
+                <option value="128">128 kbps</option>
+                <option value="192">192 kbps</option>
+                <option value="256">256 kbps</option>
+                <option value="320" selected>320 kbps</option>
+              </select>
+            </label>
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="checkbox" id="convert-vbr" />
+              <span>VBR (qualità variabile)</span>
+            </label>
+          </div>
+
+          <div class="beatport-header" style="margin-top:12px;gap:12px;">
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="radio" name="convert-out" id="convert-out-same" checked />
+              <span>Accanto al file originale</span>
+            </label>
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="radio" name="convert-out" id="convert-out-custom" />
+              <span>Cartella custom:</span>
+            </label>
+            <button id="convert-out-browse" class="btn btn-ghost pill btn-sm" disabled>Sfoglia…</button>
+            <span id="convert-out-path" class="beatport-output-info" style="margin:0;"></span>
+          </div>
+
+          <div id="convert-status" class="beatport-status"></div>
+        </div>
+
+        <div class="card beatport-table-card" id="convert-table-wrap" hidden>
+          <div class="beatport-table-wrap">
+            <table class="beatport-table" id="convert-table">
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="convert-select-all" checked /></th>
+                  <th class="col-pos">#</th>
+                  <th>File</th>
+                  <th class="col-state">Stato</th>
+                </tr>
+              </thead>
+              <tbody id="convert-tbody"></tbody>
+            </table>
+          </div>
+          <div class="beatport-toolbar" id="convert-toolbar">
+            <span class="counter" id="convert-selected-count">0/0 selezionati</span>
+            <button id="convert-run-btn" class="btn btn-primary pill" disabled>
+              <span class="ico">▶</span> Converti selezionati
+            </button>
+            <button id="convert-stop-btn" class="btn btn-danger pill" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="convert-log"></div>
         </div>
       </section>
 
