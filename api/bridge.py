@@ -15,7 +15,7 @@ from typing import Any, Callable, Optional
 import requests
 
 from core.config import load_config, save_config, VERSION, LICENSE_API_URL
-from core import beatport, spotify_client
+from core import beatport, spotify_client, traxsource
 from core import license as license_mod
 from core.downloader import (
     download_playlist,
@@ -1163,6 +1163,110 @@ class Api:
             "tracks": converted,
             "output_dir": out_root,
             "subfolder": subfolder,
+        })
+
+    # ================================================================
+    # Traxsource charts
+    # ================================================================
+    def _traxsource_output_dir(self, out_root: str, genre_name: str) -> Path:
+        """Cartella dove finiscono i file Traxsource. Coerente con la
+        sanitizzazione di `start_tracks_download` (slash -> underscore)."""
+        safe_genre = genre_name.replace("/", "_").replace("\\", "_").strip()
+        subfolder = f"Traxsource_{safe_genre}" if safe_genre else "Traxsource"
+        return Path(out_root) / subfolder
+
+    def traxsource_genres(self) -> list:
+        """Lista dei generi Traxsource per il dropdown UI."""
+        return traxsource.list_genres()
+
+    def traxsource_fetch_chart(self, slug: str, force_refresh: bool = False) -> dict:
+        """Fetches la Top 100 corrente per il genere. Salva l'ultimo genere in config."""
+        try:
+            cfg = load_config()
+            cfg["traxsource_last_genre"] = slug
+            save_config(cfg)
+        except Exception:
+            pass
+
+        try:
+            tracks = traxsource.fetch_top100(slug, force_refresh=force_refresh)
+        except ValueError as e:
+            return {"ok": False, "error": "invalid_genre", "message": str(e)}
+        except traxsource.TraxsourceUnreachableError as e:
+            return {"ok": False, "error": "unreachable", "message": str(e)}
+        except traxsource.TraxsourceParseError as e:
+            return {"ok": False, "error": "parse", "message": str(e)}
+
+        return {"ok": True, "tracks": [asdict(t) for t in tracks]}
+
+    def traxsource_check_existing(self, tracks: list, genre_name: str) -> list:
+        """True per ogni track già presente nella cartella output Traxsource.
+        Match euristico: filename (senza extension) deve contenere sia il titolo
+        che il primo artista (case-insensitive)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return [False] * len(tracks)
+
+        out_dir = self._traxsource_output_dir(out_root, genre_name)
+        if not out_dir.exists():
+            return [False] * len(tracks)
+
+        existing_stems = [p.stem.lower() for p in out_dir.glob("*.mp3")]
+        result = []
+        for t in tracks:
+            title = (t.get("title") or "").lower().strip()
+            artists = (t.get("artists") or "")
+            first_artist = artists.split(",")[0].split("&")[0].strip().lower()
+            if not title or not first_artist:
+                result.append(False)
+                continue
+            result.append(any(
+                (title in stem and first_artist in stem)
+                for stem in existing_stems
+            ))
+        return result
+
+    def traxsource_download_selected(self, tracks: list, genre_name: str) -> dict:
+        """Converte i TraxsourceTrack in tracklist compatibile con
+        start_tracks_download + costruisce metadata paralleli per il tagger ID3
+        (album=label Traxsource, date=YYYY-MM corrente, genre=nome genere)."""
+        cfg = load_config()
+        out_root = (cfg.get("output_dir") or "").strip()
+        if not out_root:
+            return {"ok": False, "error": "Cartella output non impostata"}
+
+        target = self._traxsource_output_dir(out_root, genre_name)
+        subfolder = target.name  # es. "Traxsource_Tech House"
+
+        import datetime as _dt
+        current_month = _dt.date.today().strftime("%Y-%m")
+
+        converted: list = []
+        metadata: list = []
+        for t in tracks:
+            title = (t.get("title") or "").strip()
+            artists = (t.get("artists") or "").strip()
+            if not title:
+                continue
+            converted.append({"name": title, "artist": artists})
+            metadata.append({
+                "title": title,
+                "artist": artists,
+                "album": (t.get("label") or "").strip() or f"Traxsource Top 100 {current_month}",
+                "date": current_month,
+                "genre": genre_name,
+                "cover_url": (t.get("cover_url_large") or t.get("image_url") or "").strip(),
+            })
+
+        if not converted:
+            return {"ok": False, "error": "Nessun brano valido"}
+
+        return self.start_tracks_download({
+            "tracks": converted,
+            "output_dir": out_root,
+            "subfolder": subfolder,
+            "metadata": metadata,
         })
 
     # ================================================================
