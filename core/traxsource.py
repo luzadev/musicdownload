@@ -104,3 +104,88 @@ def _large_cover(url: str) -> str:
     if not url:
         return ""
     return _SIZE_RE.sub("/500x500/", url)
+
+
+_TOP100_LINK_RE = re.compile(r'href="(/title/\d+/top-100-[a-z0-9-]+)"')
+
+
+def _discover_top100_url(genre_html: str) -> str:
+    """Estrae il path relativo della playlist Top 100 corrente dalla pagina di un genere."""
+    m = _TOP100_LINK_RE.search(genre_html)
+    if not m:
+        raise TraxsourceParseError("link Top 100 non trovato nella pagina genere")
+    return m.group(1)
+
+
+def _parse_tracks(html: str) -> list:
+    """Parsa la pagina Top 100 (title playlist) e ritorna list[TraxsourceTrack].
+
+    Selettori (verificati su fixture tech-house 2026-07):
+      row       = div.trk-row.play-trk (data-trid=<int>)
+      position  = div.tnum (inside div.tnum-pos)
+      title <a> = div.trk-cell.title a[href^="/track/"]
+      version   = span.version (contiene child span.duration da rimuovere)
+      artists   = a.com-artists (uno o piu)
+      label <a> = div.trk-cell.label a
+      cover img = div.trk-cell.thumb img (src /scripts/image.php/52x52/...)
+    """
+    # Lazy import — bs4 non e' hard-dep del modulo (importato solo quando serve).
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    rows = soup.select("div.trk-row.play-trk")
+    if not rows:
+        raise TraxsourceParseError("nessuna track (div.trk-row.play-trk) trovata")
+
+    out: list = []
+    for i, row in enumerate(rows, 1):
+        try:
+            trid = int(row.get("data-trid") or 0)
+
+            pos_el = row.select_one("div.tnum")
+            position = i  # fallback su enumerate se pos manca / non e' un numero
+            if pos_el:
+                pos_txt = pos_el.get_text(strip=True)
+                if pos_txt.isdigit():
+                    position = int(pos_txt)
+
+            title_a = row.select_one('div.trk-cell.title a[href^="/track/"]')
+            if not title_a:
+                continue
+            title = title_a.get_text(strip=True)
+            href = title_a.get("href") or ""
+            slug = href.rsplit("/", 1)[-1]
+
+            # Mix version: contenuto di span.version, escluso span.duration
+            mix = ""
+            version_el = row.select_one("span.version")
+            if version_el:
+                dur_el = version_el.select_one("span.duration")
+                if dur_el:
+                    dur_el.extract()
+                mix = version_el.get_text(strip=True)
+
+            artist_names = [a.get_text(strip=True) for a in row.select("a.com-artists")]
+            artists = _format_artists(artist_names)
+
+            label_a = row.select_one("div.trk-cell.label a")
+            label = label_a.get_text(strip=True) if label_a else ""
+
+            img = row.select_one('div.trk-cell.thumb img[src*="/scripts/image.php/"]')
+            image_url = (img.get("src") or "") if img else ""
+            cover_large = _large_cover(image_url)
+
+            out.append(TraxsourceTrack(
+                position=position,
+                title=title,
+                mix=mix,
+                artists=artists,
+                label=label,
+                traxsource_id=trid,
+                slug=slug,
+                image_url=image_url,
+                cover_url_large=cover_large,
+            ))
+        except Exception as e:
+            raise TraxsourceParseError(f"errore parse track[{i}]: {e}") from e
+    return out

@@ -95,3 +95,44 @@ class TestExceptions:
     def test_exceptions_are_subclasses(self):
         assert issubclass(traxsource.TraxsourceUnreachableError, traxsource.TraxsourceError)
         assert issubclass(traxsource.TraxsourceParseError, traxsource.TraxsourceError)
+
+
+class TestDiscoverTop100Url:
+    def test_extracts_link_from_genre_page(self, fixtures_dir):
+        html = (fixtures_dir / "traxsource_tech_house_genre.html").read_text()
+        url = traxsource._discover_top100_url(html)
+        assert url.startswith("/title/")
+        assert "top-100" in url
+
+    def test_raises_when_no_link(self):
+        with pytest.raises(traxsource.TraxsourceParseError, match="Top 100"):
+            traxsource._discover_top100_url("<html>nulla</html>")
+
+
+class TestParseTracks:
+    def test_parses_100_tracks(self, fixtures_dir):
+        html = (fixtures_dir / "traxsource_tech_house_top100.html").read_text()
+        tracks = traxsource._parse_tracks(html)
+        assert len(tracks) == 100
+
+    def test_positions_sequential_1_to_100(self, fixtures_dir):
+        html = (fixtures_dir / "traxsource_tech_house_top100.html").read_text()
+        tracks = traxsource._parse_tracks(html)
+        positions = [t.position for t in tracks]
+        assert positions == list(range(1, 101))
+
+    def test_track_shape(self, fixtures_dir):
+        html = (fixtures_dir / "traxsource_tech_house_top100.html").read_text()
+        tracks = traxsource._parse_tracks(html)
+        first = tracks[0]
+        assert first.title
+        assert first.artists
+        assert first.traxsource_id > 0
+        assert first.slug
+        assert first.image_url.startswith("https://")
+        assert first.cover_url_large.startswith("https://")
+        assert "500x500" in first.cover_url_large
+
+    def test_raises_when_no_tracks(self):
+        with pytest.raises(traxsource.TraxsourceParseError, match="track"):
+            traxsource._parse_tracks("<html>vuoto</html>")
