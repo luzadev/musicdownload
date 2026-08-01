@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.8.6"
+VERSION = "v1.9.0"
 
 
 APP_NAME = "MusicTools"
@@ -72,6 +72,8 @@ DEFAULTS = {
     "theme": "dark",
     # ---- Beatport ----
     "beatport_last_genre": "melodic-house-techno",  # ultimo genere Top 100 caricato
+    # ---- Traxsource ----
+    "traxsource_last_genre": "tech-house",
     # ---- Music Search (Spotify + YouTube) ----
     "spotify_search_last_query": "",
     "spotify_search_artist_mode": False,
