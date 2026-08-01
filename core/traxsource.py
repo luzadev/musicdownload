@@ -7,6 +7,7 @@ Spec: docs/superpowers/specs/2026-08-01-traxsource-charts-design.md.
 from __future__ import annotations
 
 import re
+import time
 from dataclasses import dataclass
 
 
@@ -189,3 +190,88 @@ def _parse_tracks(html: str) -> list:
         except Exception as e:
             raise TraxsourceParseError(f"errore parse track[{i}]: {e}") from e
     return out
+
+
+# --- fetch_top100 con session curl_cffi + retry + cache ------------------
+
+_IMPERSONATE = "chrome131"
+_REQUEST_TIMEOUT = 15
+_MAX_ATTEMPTS = 3
+_BACKOFF_SEC = [1, 3]
+_CACHE_TTL_SEC = 15 * 60
+
+_cache: dict = {}
+_session_singleton = None
+
+
+def _session():
+    """Ritorna la Session curl_cffi singleton, preriscaldata con GET a /."""
+    global _session_singleton
+    if _session_singleton is None:
+        from curl_cffi import requests as _cffi
+        _session_singleton = _cffi.Session(impersonate=_IMPERSONATE)
+        try:
+            _session_singleton.get("https://www.traxsource.com/", timeout=_REQUEST_TIMEOUT)
+        except Exception:
+            pass  # cookie CF possono arrivare comunque
+    return _session_singleton
+
+
+def _do_get(session, url: str) -> str:
+    """GET con retry + backoff. Include Referer per pagine interne."""
+    last_exc = None
+    for attempt in range(_MAX_ATTEMPTS):
+        try:
+            resp = session.get(
+                url,
+                timeout=_REQUEST_TIMEOUT,
+                headers={"Referer": "https://www.traxsource.com/"},
+            )
+            if resp.status_code >= 500 or resp.status_code == 403:
+                raise Exception(f"HTTP {resp.status_code}")
+            resp.raise_for_status()
+            return resp.text
+        except Exception as e:
+            last_exc = e
+            if attempt < _MAX_ATTEMPTS - 1:
+                time.sleep(_BACKOFF_SEC[attempt])
+    raise TraxsourceUnreachableError(
+        f"Traxsource irraggiungibile dopo {_MAX_ATTEMPTS} tentativi: {last_exc}"
+    )
+
+
+def fetch_top100(slug: str, force_refresh: bool = False) -> list:
+    """Fetches Top 100 corrente per il genere.
+
+    1. Verifica slug in GENRES
+    2. Fetch pagina genre -> _discover_top100_url
+    3. Fetch pagina Top 100 -> _parse_tracks
+    4. Cache 15 min
+
+    Raises:
+        ValueError: slug non in GENRES
+        TraxsourceUnreachableError: rete/5xx dopo retry
+        TraxsourceParseError: HTML non conforme
+    """
+    if slug not in GENRES:
+        raise ValueError(f"slug genere non valido: {slug!r}")
+
+    now = time.time()
+    if not force_refresh:
+        cached = _cache.get(slug)
+        if cached and (now - cached[0]) < _CACHE_TTL_SEC:
+            return cached[1]
+
+    gid, _name = GENRES[slug]
+    sess = _session()
+
+    genre_url = f"https://www.traxsource.com/genre/{gid}/{slug}"
+    genre_html = _do_get(sess, genre_url)
+    top100_path = _discover_top100_url(genre_html)
+
+    top100_url = "https://www.traxsource.com" + top100_path
+    top100_html = _do_get(sess, top100_url)
+    tracks = _parse_tracks(top100_html)
+
+    _cache[slug] = (now, tracks)
+    return tracks

@@ -136,3 +136,82 @@ class TestParseTracks:
     def test_raises_when_no_tracks(self):
         with pytest.raises(traxsource.TraxsourceParseError, match="track"):
             traxsource._parse_tracks("<html>vuoto</html>")
+
+
+from unittest.mock import patch, MagicMock
+
+
+def _mock_response(text: str, status_code: int = 200) -> MagicMock:
+    resp = MagicMock()
+    resp.text = text
+    resp.status_code = status_code
+
+    def _raise():
+        if status_code >= 400:
+            raise Exception(f"HTTP {status_code}")
+    resp.raise_for_status = _raise
+    return resp
+
+
+class TestFetchTop100:
+    @pytest.fixture
+    def genre_html(self, fixtures_dir):
+        return (fixtures_dir / "traxsource_tech_house_genre.html").read_text()
+
+    @pytest.fixture
+    def top100_html(self, fixtures_dir):
+        return (fixtures_dir / "traxsource_tech_house_top100.html").read_text()
+
+    def test_success_returns_100_tracks(self, genre_html, top100_html):
+        traxsource._cache.clear()
+        mock_sess = MagicMock()
+        mock_sess.get.side_effect = [
+            _mock_response(genre_html, 200),
+            _mock_response(top100_html, 200),
+        ]
+        with patch("core.traxsource._session", return_value=mock_sess):
+            tracks = traxsource.fetch_top100("tech-house")
+        assert len(tracks) == 100
+
+    def test_invalid_slug_raises_value_error(self):
+        with pytest.raises(ValueError, match="slug"):
+            traxsource.fetch_top100("not-a-genre")
+
+    def test_5xx_retries_and_raises_unreachable(self):
+        traxsource._cache.clear()
+        mock_sess = MagicMock()
+        mock_sess.get.return_value = _mock_response("", 503)
+        with patch("core.traxsource._session", return_value=mock_sess), \
+             patch("core.traxsource.time.sleep"):
+            with pytest.raises(traxsource.TraxsourceUnreachableError):
+                traxsource.fetch_top100("tech-house")
+        # 3 tentativi
+        assert mock_sess.get.call_count == 3
+
+    def test_cache_hit_within_ttl(self, genre_html, top100_html):
+        traxsource._cache.clear()
+        mock_sess = MagicMock()
+        mock_sess.get.side_effect = [
+            _mock_response(genre_html, 200),
+            _mock_response(top100_html, 200),
+        ]
+        with patch("core.traxsource._session", return_value=mock_sess):
+            traxsource.fetch_top100("tech-house")
+            traxsource.fetch_top100("tech-house")
+        # 2 chiamate al primo fetch (genre + top100), 0 al secondo
+        assert mock_sess.get.call_count == 2
+
+    def test_force_refresh_bypasses_cache(self, genre_html, top100_html):
+        traxsource._cache.clear()
+        mock_sess = MagicMock()
+        # 4 risposte (2 fetch x 2 richieste ciascuno)
+        mock_sess.get.side_effect = [
+            _mock_response(genre_html, 200),
+            _mock_response(top100_html, 200),
+            _mock_response(genre_html, 200),
+            _mock_response(top100_html, 200),
+        ]
+        with patch("core.traxsource._session", return_value=mock_sess):
+            traxsource.fetch_top100("tech-house")
+            traxsource.fetch_top100("tech-house", force_refresh=True)
+        assert mock_sess.get.call_count == 4
