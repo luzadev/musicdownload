@@ -33,6 +33,10 @@
           <span class="nav-icon">🎧</span>
           <span>Beatport</span>
         </button>
+        <button class="nav-item" data-view="traxsource" data-feature="audio">
+          <span class="nav-icon">▲</span>
+          <span>Traxsource</span>
+        </button>
         <button class="nav-item" data-view="spotify" data-feature="audio">
           <span class="nav-icon">🟢</span>
           <span>Spotify</span>
@@ -896,10 +900,11 @@
                 <tr>
                   <th class="col-check"><input type="checkbox" id="beatport-select-all" /></th>
                   <th class="col-cover"></th>
-                  <th class="col-pos">#</th>
-                  <th>Artista</th>
-                  <th>Titolo (Mix)</th>
-                  <th class="col-dur">Durata</th>
+                  <th class="col-pos sortable" data-sort="position">#</th>
+                  <th class="sortable" data-sort="artists">Artista</th>
+                  <th class="sortable" data-sort="title">Titolo (Mix)</th>
+                  <th class="col-dur sortable" data-sort="duration_sec">Durata</th>
+                  <th class="col-date sortable" data-sort="release_date">Data</th>
                   <th class="col-state">Stato</th>
                 </tr>
               </thead>
@@ -920,6 +925,64 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="beatport-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: TRAXSOURCE ===== -->
+      <section class="view" id="view-traxsource">
+        <header class="hero hero-purple">
+          <div class="hero-content">
+            <div class="hero-eyebrow purple">TRAXSOURCE CHARTS</div>
+            <h1 class="hero-title">Top 100 Traxsource per genere</h1>
+            <p class="hero-subtitle">La classifica mensile ufficiale. Scarica in un click con tag ID3 completi (label, cover art, genere).</p>
+          </div>
+          <div class="hero-deco">▲</div>
+        </header>
+
+        <h2 class="section-label">Genere</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <select id="traxsource-genre" class="input pill"></select>
+            <button class="btn btn-primary pill" id="traxsource-load-btn">
+              <span class="ico">↓</span> Carica Top 100
+            </button>
+            <span class="hint-inline">Shift+click per bypassare la cache</span>
+          </div>
+          <div id="traxsource-status" class="beatport-status"></div>
+          <div id="traxsource-output-info" class="beatport-output-info"></div>
+        </div>
+
+        <div class="card beatport-table-card">
+          <div class="beatport-table-wrap">
+            <table id="traxsource-table" class="beatport-table" hidden>
+              <thead>
+                <tr>
+                  <th class="col-check"><input type="checkbox" id="traxsource-select-all" /></th>
+                  <th class="col-cover"></th>
+                  <th class="col-pos sortable" data-sort="position">#</th>
+                  <th class="sortable" data-sort="artists">Artista</th>
+                  <th class="sortable" data-sort="title">Titolo (Mix)</th>
+                  <th class="sortable" data-sort="label">Label</th>
+                  <th class="col-state">Stato</th>
+                </tr>
+              </thead>
+              <tbody></tbody>
+            </table>
+          </div>
+          <div class="beatport-toolbar" id="traxsource-toolbar" hidden>
+            <span class="counter" id="traxsource-selected-count">0/0 selezionati</span>
+            <button class="btn btn-primary pill" id="traxsource-download-btn" disabled>
+              <span class="ico">▶</span> Scarica selezionati
+            </button>
+            <button class="btn btn-danger pill" id="traxsource-stop-btn" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="traxsource-log"></div>
         </div>
       </section>
 
@@ -957,11 +1020,12 @@
                 <tr>
                   <th class="col-check"><input type="checkbox" id="spotify-select-all" checked /></th>
                   <th class="col-cover"></th>
-                  <th class="col-pos">#</th>
-                  <th>Artista</th>
-                  <th>Titolo</th>
-                  <th>Album</th>
-                  <th class="col-dur">Durata</th>
+                  <th class="col-pos sortable" data-sort="position">#</th>
+                  <th class="sortable" data-sort="artists">Artista</th>
+                  <th class="sortable" data-sort="name">Titolo</th>
+                  <th class="sortable" data-sort="album">Album</th>
+                  <th class="col-dur sortable" data-sort="duration_sec">Durata</th>
+                  <th class="col-date sortable" data-sort="release_date">Data</th>
                   <th class="col-state"></th>
                 </tr>
               </thead>
@@ -1015,10 +1079,11 @@
                 <tr>
                   <th class="col-check"><input type="checkbox" id="youtube-select-all" checked /></th>
                   <th class="col-cover"></th>
-                  <th class="col-pos">#</th>
-                  <th>Titolo video</th>
-                  <th>Canale</th>
-                  <th class="col-dur">Durata</th>
+                  <th class="col-pos sortable" data-sort="position">#</th>
+                  <th class="sortable" data-sort="title">Titolo video</th>
+                  <th class="sortable" data-sort="channel">Canale</th>
+                  <th class="col-dur sortable" data-sort="duration_sec">Durata</th>
+                  <th class="col-date sortable" data-sort="release_date">Data</th>
                   <th class="col-state"></th>
                 </tr>
               </thead>
