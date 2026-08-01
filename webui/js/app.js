@@ -400,6 +400,7 @@ const logEls = {
   spotify: () => $("#spotify-log"),
   youtube: () => $("#youtube-log"),
   convert: () => $("#convert-log"),
+  traxsource: () => $("#traxsource-log"),
 };
 
 function classifyLog(msg) {
@@ -511,6 +512,9 @@ async function init() {
   // Spotify + YouTube search tabs
   await SpotifyUI.init();
   await YoutubeUI.init();
+
+  // Traxsource charts tab
+  await TraxsourceUI.init();
 
   // WAV -> MP3 converter tab
   await ConvertUI.init();
@@ -1184,6 +1188,61 @@ $("#quotaUpgradeBtn")?.addEventListener("click", async () => {
 });
 
 // ============================================================
+// Helper di ordinamento condivisi tra BeatportUI, SpotifyUI, YoutubeUI
+// ============================================================
+function _sortPairs(tracks, existing, col, dir) {
+  const pairs = tracks.map((t, i) => ({ t, e: existing[i] || false, origIdx: i }));
+  const dirMul = dir === "desc" ? -1 : 1;
+  pairs.sort((a, b) => {
+    let av = a.t[col], bv = b.t[col];
+    if (col === "position") {
+      // Per Beatport t.position esiste (rank ufficiale); per Spotify/YouTube
+      // torniamo l'ordine originale della risposta API.
+      av = (typeof av === "number") ? av : a.origIdx;
+      bv = (typeof bv === "number") ? bv : b.origIdx;
+    }
+    if (typeof av === "number" && typeof bv === "number") {
+      return (av - bv) * dirMul;
+    }
+    av = String(av == null ? "" : av).toLowerCase();
+    bv = String(bv == null ? "" : bv).toLowerCase();
+    // Empty strings sempre in fondo indipendentemente da direzione
+    if (av === "" && bv !== "") return 1;
+    if (bv === "" && av !== "") return -1;
+    if (av < bv) return -1 * dirMul;
+    if (av > bv) return 1 * dirMul;
+    return 0;
+  });
+  return {
+    tracks: pairs.map(p => p.t),
+    existing: pairs.map(p => p.e),
+    origIndexes: pairs.map(p => p.origIdx),
+  };
+}
+
+function _bindSortableHeaders(tableSelector, onSort) {
+  document.querySelectorAll(`${tableSelector} th.sortable`).forEach(th => {
+    th.style.cursor = "pointer";
+    th.style.userSelect = "none";
+    th.addEventListener("click", () => onSort(th.dataset.sort));
+  });
+}
+
+function _updateSortArrows(tableSelector, sortCol, sortDir) {
+  document.querySelectorAll(`${tableSelector} th.sortable`).forEach(th => {
+    const key = th.dataset.sort;
+    // Usa un <span class="sort-arrow"> per non toccare il testo principale
+    let arrow = th.querySelector(".sort-arrow");
+    if (!arrow) {
+      arrow = document.createElement("span");
+      arrow.className = "sort-arrow";
+      th.appendChild(arrow);
+    }
+    arrow.textContent = key === sortCol ? (sortDir === "asc" ? " ▲" : " ▼") : "";
+  });
+}
+
+// ============================================================
 // BEATPORT tab — carica Top 100 per genere, seleziona tracce, scarica
 // (il download riusa start_tracks_download, quindi passa dagli stessi
 // canali "download:progress" / "download:done" / log view="download")
@@ -1195,6 +1254,8 @@ const BeatportUI = (function () {
   let currentGenreName = "";
   let currentGenreSlug = "";
   let downloading = false;
+  let sortCol = null;
+  let sortDir = "asc";
 
   function fmtDur(sec) {
     const n = Number(sec) || 0;
@@ -1287,16 +1348,28 @@ const BeatportUI = (function () {
     const tbody = table.querySelector("tbody");
     tbody.innerHTML = "";
 
-    currentTracks.forEach((t, i) => {
+    let displayTracks = currentTracks;
+    let displayExisting = existing;
+    let origIndexes = currentTracks.map((_, i) => i);
+    if (sortCol) {
+      const s = _sortPairs(currentTracks, existing, sortCol, sortDir);
+      displayTracks = s.tracks;
+      displayExisting = s.existing;
+      origIndexes = s.origIndexes;
+    }
+
+    displayTracks.forEach((t, i) => {
+      const origIdx = origIndexes[i];
+      const alreadyDl = displayExisting[i];
       const tr = document.createElement("tr");
-      if (existing[i]) tr.classList.add("already-downloaded");
+      if (alreadyDl) tr.classList.add("already-downloaded");
 
       const tdCheck = document.createElement("td");
       tdCheck.className = "col-check";
       const cb = document.createElement("input");
       cb.type = "checkbox";
-      cb.dataset.idx = String(i);
-      cb.checked = !existing[i];
+      cb.dataset.idx = String(origIdx);
+      cb.checked = !alreadyDl;
       cb.addEventListener("change", updateSelectionCount);
       tdCheck.appendChild(cb);
       tr.appendChild(tdCheck);
@@ -1316,7 +1389,7 @@ const BeatportUI = (function () {
 
       const tdPos = document.createElement("td");
       tdPos.className = "col-pos";
-      tdPos.textContent = String(t.position || (i + 1));
+      tdPos.textContent = String(t.position || (origIdx + 1));
       tr.appendChild(tdPos);
 
       const tdArtist = document.createElement("td");
@@ -1332,18 +1405,34 @@ const BeatportUI = (function () {
       tdDur.textContent = fmtDur(t.duration_sec);
       tr.appendChild(tdDur);
 
+      const tdDate = document.createElement("td");
+      tdDate.className = "col-date";
+      tdDate.textContent = t.release_date || "";
+      tr.appendChild(tdDate);
+
       const tdState = document.createElement("td");
       tdState.className = "col-state";
-      if (existing[i]) tdState.textContent = "✓ già scaricato";
+      if (alreadyDl) tdState.textContent = "✓ già scaricato";
       tr.appendChild(tdState);
 
       tbody.appendChild(tr);
     });
 
+    _updateSortArrows("#beatport-table", sortCol, sortDir);
     table.hidden = false;
     $("#beatport-toolbar").hidden = false;
     updateOutputInfo();
     updateSelectionCount();
+  }
+
+  function handleSort(col) {
+    if (sortCol === col) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortCol = col;
+      sortDir = "asc";
+    }
+    renderTable();
   }
 
   function updateSelectionCount() {
@@ -1462,6 +1551,7 @@ const BeatportUI = (function () {
     $("#beatport-download-btn").addEventListener("click", startDownload);
     $("#beatport-stop-btn").addEventListener("click", stopDownload);
     $("#beatport-select-all").addEventListener("change", (e) => toggleAll(e.target.checked));
+    _bindSortableHeaders("#beatport-table", handleSort);
 
     // Aggancia agli event listener esistenti del canale "download" senza rompere
     // il comportamento della tab Scarica (wrapping additivo).
@@ -1492,7 +1582,7 @@ const BeatportUI = (function () {
 const SpotifyUI = (() => {
   // NOTE: local module state — named `mstate` to NOT shadow the outer
   // module-level `state` (which holds `state.config`).
-  const mstate = { tracks: [], existing: [], downloading: false };
+  const mstate = { tracks: [], existing: [], downloading: false, sortCol: null, sortDir: "asc" };
 
   function _escape(s) {
     const d = document.createElement("div");
@@ -1530,29 +1620,53 @@ const SpotifyUI = (() => {
     const tbody = $("#spotify-tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
-    mstate.tracks.forEach((t, i) => {
-      const already = !!mstate.existing[i];
+
+    let displayTracks = mstate.tracks;
+    let displayExisting = mstate.existing;
+    let origIndexes = mstate.tracks.map((_, i) => i);
+    if (mstate.sortCol) {
+      const s = _sortPairs(mstate.tracks, mstate.existing, mstate.sortCol, mstate.sortDir);
+      displayTracks = s.tracks;
+      displayExisting = s.existing;
+      origIndexes = s.origIndexes;
+    }
+
+    displayTracks.forEach((t, i) => {
+      const origIdx = origIndexes[i];
+      const already = !!displayExisting[i];
       const tr = document.createElement("tr");
-      tr.dataset.idx = String(i);
+      tr.dataset.idx = String(origIdx);
       if (already) tr.classList.add("already-downloaded");
       const coverImg = t.image_url
         ? `<img src="${_escape(t.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"/>`
         : "";
       tr.innerHTML = `
-        <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-check"><input type="checkbox" data-idx="${origIdx}" ${already ? "" : "checked"} /></td>
         <td class="col-cover">${coverImg}</td>
-        <td class="col-pos">${i + 1}</td>
+        <td class="col-pos">${origIdx + 1}</td>
         <td>${_escape(t.artists)}</td>
         <td>${_escape(t.name)}</td>
         <td>${_escape(t.album)}</td>
         <td class="col-dur">${_fmtDuration(t.duration_sec)}</td>
+        <td class="col-date">${_escape(t.release_date || "")}</td>
         <td class="col-state">${already ? "✓ già scaricato" : ""}</td>
       `;
       const cb = tr.querySelector("input[type=checkbox]");
       if (cb) cb.addEventListener("change", updateSelectionCount);
       tbody.appendChild(tr);
     });
+    _updateSortArrows("#spotify-table", mstate.sortCol, mstate.sortDir);
     updateSelectionCount();
+  }
+
+  function handleSort(col) {
+    if (mstate.sortCol === col) {
+      mstate.sortDir = mstate.sortDir === "asc" ? "desc" : "asc";
+    } else {
+      mstate.sortCol = col;
+      mstate.sortDir = "asc";
+    }
+    renderTable();
   }
 
   function setStatus(text, kind) {
@@ -1708,6 +1822,7 @@ const SpotifyUI = (() => {
     });
     $("#spotify-download-btn").addEventListener("click", startDownload);
     $("#spotify-stop-btn").addEventListener("click", stopDownload);
+    _bindSortableHeaders("#spotify-table", handleSort);
 
     // Wrap bridge handlers additivamente
     const origLog = bridgeHandlers["log"];
@@ -1731,7 +1846,7 @@ const SpotifyUI = (() => {
 // YouTube search
 // =====================================================================
 const YoutubeUI = (() => {
-  const mstate = { tracks: [], existing: [], downloading: false };
+  const mstate = { tracks: [], existing: [], downloading: false, sortCol: null, sortDir: "asc" };
 
   function _escape(s) {
     const d = document.createElement("div");
@@ -1768,28 +1883,52 @@ const YoutubeUI = (() => {
     const tbody = $("#youtube-tbody");
     if (!tbody) return;
     tbody.innerHTML = "";
-    mstate.tracks.forEach((t, i) => {
-      const already = !!mstate.existing[i];
+
+    let displayTracks = mstate.tracks;
+    let displayExisting = mstate.existing;
+    let origIndexes = mstate.tracks.map((_, i) => i);
+    if (mstate.sortCol) {
+      const s = _sortPairs(mstate.tracks, mstate.existing, mstate.sortCol, mstate.sortDir);
+      displayTracks = s.tracks;
+      displayExisting = s.existing;
+      origIndexes = s.origIndexes;
+    }
+
+    displayTracks.forEach((t, i) => {
+      const origIdx = origIndexes[i];
+      const already = !!displayExisting[i];
       const tr = document.createElement("tr");
-      tr.dataset.idx = String(i);
+      tr.dataset.idx = String(origIdx);
       if (already) tr.classList.add("already-downloaded");
       const coverImg = t.image_url
         ? `<img src="${_escape(t.image_url)}" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.style.visibility='hidden'"/>`
         : "";
       tr.innerHTML = `
-        <td class="col-check"><input type="checkbox" data-idx="${i}" ${already ? "" : "checked"} /></td>
+        <td class="col-check"><input type="checkbox" data-idx="${origIdx}" ${already ? "" : "checked"} /></td>
         <td class="col-cover">${coverImg}</td>
-        <td class="col-pos">${i + 1}</td>
+        <td class="col-pos">${origIdx + 1}</td>
         <td>${_escape(t.title)}</td>
         <td>${_escape(t.channel)}</td>
         <td class="col-dur">${_fmtDuration(t.duration_sec)}</td>
+        <td class="col-date">${_escape(t.release_date || "")}</td>
         <td class="col-state">${already ? "✓ già scaricato" : ""}</td>
       `;
       const cb = tr.querySelector("input[type=checkbox]");
       if (cb) cb.addEventListener("change", updateSelectionCount);
       tbody.appendChild(tr);
     });
+    _updateSortArrows("#youtube-table", mstate.sortCol, mstate.sortDir);
     updateSelectionCount();
+  }
+
+  function handleSort(col) {
+    if (mstate.sortCol === col) {
+      mstate.sortDir = mstate.sortDir === "asc" ? "desc" : "asc";
+    } else {
+      mstate.sortCol = col;
+      mstate.sortDir = "asc";
+    }
+    renderTable();
   }
 
   function setStatus(text, kind) {
@@ -1934,6 +2073,7 @@ const YoutubeUI = (() => {
     });
     $("#youtube-download-btn").addEventListener("click", startDownload);
     $("#youtube-stop-btn").addEventListener("click", stopDownload);
+    _bindSortableHeaders("#youtube-table", handleSort);
 
     const origLog = bridgeHandlers["log"];
     bridgeHandlers["log"] = (payload) => {
@@ -1946,6 +2086,321 @@ const YoutubeUI = (() => {
     bridgeHandlers["download:done"] = (payload) => {
       if (origDone) origDone(payload);
       if (mstate.downloading) finishDownload();
+    };
+  }
+
+  return { init };
+})();
+
+// ============================================================
+// TRAXSOURCE tab — carica Top 100 per genere, seleziona tracce, scarica
+// Parallelo a BeatportUI (stessi canali "download:progress" /
+// "download:done" / log view="download"). Colonne: cover, #, artista,
+// titolo (mix), label, stato. No Durata / Data (non nel markup Traxsource).
+// ============================================================
+const TraxsourceUI = (function () {
+  let genres = [];
+  let currentTracks = [];
+  let existing = [];
+  let currentGenreName = "";
+  let currentGenreSlug = "";
+  let downloading = false;
+  let sortCol = null;
+  let sortDir = "asc";
+
+  function safeGenreFolder(name) {
+    return String(name || "").replace(/[\/\\]/g, "_").trim();
+  }
+
+  function populateSelect() {
+    const sel = $("#traxsource-genre");
+    if (!sel) return;
+    sel.innerHTML = "";
+    for (const g of genres) {
+      const opt = document.createElement("option");
+      opt.value = g.slug;
+      opt.textContent = g.name;
+      sel.appendChild(opt);
+    }
+  }
+
+  function updateOutputInfo() {
+    const info = $("#traxsource-output-info");
+    if (!info) return;
+    const root = (state.config && state.config.output_dir) || "";
+    if (!root) {
+      info.textContent = "⚠ Imposta la cartella output in Impostazioni prima di scaricare";
+      info.className = "beatport-output-info warn";
+      return;
+    }
+    const folder = safeGenreFolder(currentGenreName);
+    info.textContent = folder
+      ? `Destinazione: ${root}/Traxsource_${folder}`
+      : `Destinazione: ${root}/Traxsource`;
+    info.className = "beatport-output-info";
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#traxsource-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  async function loadChart(forceRefresh) {
+    const sel = $("#traxsource-genre");
+    const slug = sel && sel.value;
+    if (!slug) return;
+    const genreName = (sel.selectedOptions[0] && sel.selectedOptions[0].textContent) || slug;
+    currentGenreSlug = slug;
+    currentGenreName = genreName;
+
+    setStatus(forceRefresh ? "Ricarico Top 100 (bypass cache)…" : "Caricamento Top 100…", "loading");
+    $("#traxsource-table").hidden = true;
+    $("#traxsource-toolbar").hidden = true;
+    $("#traxsource-table").querySelector("tbody").innerHTML = "";
+
+    let res;
+    try {
+      res = await window.pywebview.api.traxsource_fetch_chart(slug, !!forceRefresh);
+    } catch (e) {
+      setStatus("Errore: " + ((e && e.message) || e), "error");
+      return;
+    }
+    if (!res || !res.ok) {
+      const code = res && res.error;
+      let msg = (res && res.message) || "Errore sconosciuto";
+      if (code === "invalid_genre") msg = "Genere non valido";
+      else if (code === "unreachable") msg = "Traxsource non raggiungibile — riprova più tardi";
+      else if (code === "parse") msg = "Impossibile leggere i dati (schema pagina cambiato?)";
+      setStatus(msg, "error");
+      return;
+    }
+
+    currentTracks = res.tracks || [];
+    try {
+      existing = await window.pywebview.api.traxsource_check_existing(currentTracks, currentGenreName);
+    } catch (_e) {
+      existing = currentTracks.map(() => false);
+    }
+    setStatus(`${currentTracks.length} brani caricati`, "ok");
+    renderTable();
+  }
+
+  function renderTable() {
+    const table = $("#traxsource-table");
+    const tbody = table.querySelector("tbody");
+    tbody.innerHTML = "";
+
+    let displayTracks = currentTracks;
+    let displayExisting = existing;
+    let origIndexes = currentTracks.map((_, i) => i);
+    if (sortCol) {
+      const s = _sortPairs(currentTracks, existing, sortCol, sortDir);
+      displayTracks = s.tracks;
+      displayExisting = s.existing;
+      origIndexes = s.origIndexes;
+    }
+
+    displayTracks.forEach((t, i) => {
+      const origIdx = origIndexes[i];
+      const alreadyDl = displayExisting[i];
+      const tr = document.createElement("tr");
+      if (alreadyDl) tr.classList.add("already-downloaded");
+
+      const tdCheck = document.createElement("td");
+      tdCheck.className = "col-check";
+      const cb = document.createElement("input");
+      cb.type = "checkbox";
+      cb.dataset.idx = String(origIdx);
+      cb.checked = !alreadyDl;
+      cb.addEventListener("change", updateSelectionCount);
+      tdCheck.appendChild(cb);
+      tr.appendChild(tdCheck);
+
+      const tdCover = document.createElement("td");
+      tdCover.className = "col-cover";
+      if (t.image_url) {
+        const img = document.createElement("img");
+        img.src = t.image_url;
+        img.alt = "";
+        img.loading = "lazy";
+        img.referrerPolicy = "no-referrer";
+        img.onerror = () => { img.style.visibility = "hidden"; };
+        tdCover.appendChild(img);
+      }
+      tr.appendChild(tdCover);
+
+      const tdPos = document.createElement("td");
+      tdPos.className = "col-pos";
+      tdPos.textContent = String(t.position || (origIdx + 1));
+      tr.appendChild(tdPos);
+
+      const tdArtist = document.createElement("td");
+      tdArtist.textContent = t.artists || "";
+      tr.appendChild(tdArtist);
+
+      const tdTitle = document.createElement("td");
+      tdTitle.textContent = t.mix ? `${t.title} (${t.mix})` : (t.title || "");
+      tr.appendChild(tdTitle);
+
+      const tdLabel = document.createElement("td");
+      tdLabel.textContent = t.label || "";
+      tr.appendChild(tdLabel);
+
+      const tdState = document.createElement("td");
+      tdState.className = "col-state";
+      if (alreadyDl) tdState.textContent = "✓ già scaricato";
+      tr.appendChild(tdState);
+
+      tbody.appendChild(tr);
+    });
+
+    _updateSortArrows("#traxsource-table", sortCol, sortDir);
+    table.hidden = false;
+    $("#traxsource-toolbar").hidden = false;
+    updateOutputInfo();
+    updateSelectionCount();
+  }
+
+  function handleSort(col) {
+    if (sortCol === col) {
+      sortDir = sortDir === "asc" ? "desc" : "asc";
+    } else {
+      sortCol = col;
+      sortDir = "asc";
+    }
+    renderTable();
+  }
+
+  function updateSelectionCount() {
+    const boxes = $$("#traxsource-table tbody input[type=checkbox]");
+    const total = boxes.length;
+    const checked = boxes.filter((b) => b.checked).length;
+    $("#traxsource-selected-count").textContent = `${checked}/${total} selezionati`;
+    const dlBtn = $("#traxsource-download-btn");
+    if (dlBtn) dlBtn.disabled = downloading || checked === 0;
+
+    const master = $("#traxsource-select-all");
+    if (master) {
+      if (total === 0) { master.checked = false; master.indeterminate = false; }
+      else if (checked === 0) { master.checked = false; master.indeterminate = false; }
+      else if (checked === total) { master.checked = true; master.indeterminate = false; }
+      else { master.checked = false; master.indeterminate = true; }
+    }
+  }
+
+  function toggleAll(checked) {
+    $$("#traxsource-table tbody input[type=checkbox]").forEach((b) => { b.checked = checked; });
+    updateSelectionCount();
+  }
+
+  function appendTraxsourceLog(msg) {
+    const el = $("#traxsource-log");
+    if (!el) return;
+    const cls = classifyLog(msg);
+    const line = document.createElement("div");
+    if (cls) line.className = cls;
+    line.textContent = msg;
+    el.appendChild(line);
+    el.scrollTop = el.scrollHeight;
+  }
+
+  async function startDownload() {
+    const boxes = $$("#traxsource-table tbody input[type=checkbox]");
+    const selected = [];
+    boxes.forEach((b) => {
+      if (b.checked) {
+        const idx = parseInt(b.dataset.idx, 10);
+        if (!isNaN(idx) && currentTracks[idx]) selected.push(currentTracks[idx]);
+      }
+    });
+    if (!selected.length) {
+      toast("Seleziona almeno un brano", "error");
+      return;
+    }
+    if (!state.config || !state.config.output_dir) {
+      toast("Imposta la cartella output in Impostazioni", "error");
+      return;
+    }
+
+    downloading = true;
+    $("#traxsource-download-btn").disabled = true;
+    $("#traxsource-stop-btn").hidden = false;
+    $("#traxsource-stop-btn").disabled = false;
+    $("#traxsource-log").innerHTML = "";
+    appendTraxsourceLog(`[INFO] Avvio download di ${selected.length} brani da ${currentGenreName}…`);
+
+    let res;
+    try {
+      res = await window.pywebview.api.traxsource_download_selected(selected, currentGenreName);
+    } catch (e) {
+      appendTraxsourceLog("[ERRORE] " + ((e && e.message) || e));
+      finishDownload();
+      return;
+    }
+    if (!res || !res.ok) {
+      const errMsg = (res && (res.error || res.message)) || "Impossibile avviare il download";
+      appendTraxsourceLog("[ERRORE] " + errMsg);
+      if (!handleGateBlock(res || {})) toast(errMsg, "error");
+      finishDownload();
+    }
+  }
+
+  async function stopDownload() {
+    try {
+      await window.pywebview.api.stop_download();
+    } catch (e) { console.error(e); }
+  }
+
+  function finishDownload() {
+    downloading = false;
+    $("#traxsource-stop-btn").hidden = true;
+    $("#traxsource-stop-btn").disabled = true;
+    updateSelectionCount();
+    if (currentTracks.length) {
+      window.pywebview.api.traxsource_check_existing(currentTracks, currentGenreName)
+        .then((res) => { existing = res || existing; renderTable(); })
+        .catch(() => {});
+    }
+  }
+
+  async function init() {
+    try {
+      genres = await window.pywebview.api.traxsource_genres();
+    } catch (e) {
+      console.error("Traxsource: impossibile caricare i generi", e);
+      genres = [];
+    }
+    populateSelect();
+
+    const last = (state.config && state.config.traxsource_last_genre) || "";
+    const sel = $("#traxsource-genre");
+    if (sel && last && genres.some((g) => g.slug === last)) {
+      sel.value = last;
+    }
+    updateOutputInfo();
+
+    $("#traxsource-load-btn").addEventListener("click", (e) => loadChart(e.shiftKey));
+    $("#traxsource-download-btn").addEventListener("click", startDownload);
+    $("#traxsource-stop-btn").addEventListener("click", stopDownload);
+    $("#traxsource-select-all").addEventListener("change", (e) => toggleAll(e.target.checked));
+    _bindSortableHeaders("#traxsource-table", handleSort);
+
+    // Wrapping additivo sui bridgeHandlers (canale "download" condiviso)
+    const origProgress = bridgeHandlers["download:progress"];
+    bridgeHandlers["download:progress"] = (p) => {
+      if (origProgress) origProgress(p);
+    };
+    const origDone = bridgeHandlers["download:done"];
+    bridgeHandlers["download:done"] = (p) => {
+      if (origDone) origDone(p);
+      if (downloading) finishDownload();
+    };
+    const origLog = bridgeHandlers["log"];
+    bridgeHandlers["log"] = ({ view, msg }) => {
+      if (origLog) origLog({ view, msg });
+      if (downloading && view === "download") appendTraxsourceLog(msg);
     };
   }
 
