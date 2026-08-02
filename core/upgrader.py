@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import queue
 import re
 import subprocess
 import threading
@@ -296,23 +297,59 @@ def upgrade_folder(
 
             # Watchdog: kill del subprocess se supera _DOWNLOAD_TIMEOUT_SEC.
             # Previene hang indefinito su video problematici (geo-block,
-            # YouTube throttle, rete lenta). Alla scadenza il process viene
-            # terminato -> for line esce -> code path "download_error" naturale.
+            # YouTube throttle, rete lenta).
             def _watchdog_kill():
                 try:
                     if proc.poll() is None:
-                        proc.terminate()
+                        proc.kill()  # SIGKILL — SIGTERM può lasciare ffmpeg orfano che tiene aperto il pipe
                 except Exception:
                     pass
             watchdog = threading.Timer(_DOWNLOAD_TIMEOUT_SEC, _watchdog_kill)
             watchdog.daemon = True
             watchdog.start()
 
+            # Lettore stdout in thread separato + queue: il main loop polla
+            # con timeout invece di bloccare su `for line in proc.stdout`.
+            # Cosi is_stopped() e proc.poll() vengono controllati periodicamente
+            # -> il bottone Stop risponde in <1s anche se il subprocess ha
+            # figli orfani (ffmpeg) che tengono aperto il pipe.
+            output_q: queue.Queue = queue.Queue()
+
+            def _reader():
+                try:
+                    for line in proc.stdout:
+                        output_q.put(line)
+                except Exception:
+                    pass
+                finally:
+                    output_q.put(None)  # sentinel: pipe closed
+
+            reader = threading.Thread(target=_reader, daemon=True)
+            reader.start()
+
             try:
-                for line in proc.stdout:
+                while True:
                     if is_stopped():
-                        proc.terminate()
+                        try:
+                            proc.kill()
+                        except Exception:
+                            pass
                         return
+                    try:
+                        line = output_q.get(timeout=0.5)
+                    except queue.Empty:
+                        # Se il subprocess e' morto e il pipe non produce piu' output
+                        # (child orfano), esci comunque.
+                        if proc.poll() is not None and output_q.empty():
+                            # Aspetta ancora un attimo per drenare
+                            try:
+                                line = output_q.get(timeout=1.0)
+                            except queue.Empty:
+                                break
+                        else:
+                            continue
+                    if line is None:
+                        break
                     pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
                     if pct_match and progress_callback:
                         pct = int(float(pct_match.group(1)))
@@ -321,10 +358,10 @@ def upgrade_folder(
                 try:
                     proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
-                    proc.kill()
                     try:
+                        proc.kill()
                         proc.wait(timeout=5)
-                    except subprocess.TimeoutExpired:
+                    except Exception:
                         pass
             finally:
                 watchdog.cancel()
