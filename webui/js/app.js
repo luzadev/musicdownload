@@ -408,6 +408,7 @@ const logEls = {
   youtube: () => $("#youtube-log"),
   convert: () => $("#convert-log"),
   traxsource: () => $("#traxsource-log"),
+  dedup: () => $("#dedup-log"),
 };
 
 function classifyLog(msg) {
@@ -525,6 +526,9 @@ async function init() {
 
   // WAV -> MP3 converter tab
   await ConvertUI.init();
+
+  // Dedup tab (audio duplicati via Chromaprint)
+  await DedupUI.init();
 }
 
 async function refreshRecDevices() {
@@ -2852,6 +2856,298 @@ const ConvertUI = (() => {
     };
     // Il canale "log" e' gia gestito da logEls.convert (aggiunto sopra), quindi
     // non serve wrap qui: appendLog(view=convert, msg) targeta #convert-log.
+  }
+
+  return { init };
+})();
+
+// ============================================================
+// DedupUI — audio duplicati via Chromaprint fingerprinting
+// ============================================================
+const DedupUI = (() => {
+  const mstate = {
+    folder: "",
+    recursive: true,
+    scanning: false,
+    groups: [],
+    // Set di path da cancellare (chiave = string path)
+    toDelete: new Set(),
+  };
+
+  function _fmtDur(sec) {
+    if (!sec || sec <= 0) return "—";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}:${String(s).padStart(2, "0")}`;
+  }
+
+  function setStatus(text, kind) {
+    const el = $("#dedup-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  function updateSelectedCount() {
+    const n = mstate.toDelete.size;
+    const label = n === 1 ? "1 file da cancellare" : `${n} file da cancellare`;
+    const cnt = $("#dedup-selected-count");
+    if (cnt) cnt.textContent = label;
+    const btn = $("#dedup-trash-btn");
+    if (btn) btn.disabled = n === 0 || mstate.scanning;
+    const bar = $("#dedup-footer-bar");
+    if (bar) bar.hidden = mstate.groups.length === 0;
+  }
+
+  function renderGroups() {
+    const wrap = $("#dedup-groups-wrap");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    mstate.toDelete.clear();
+
+    if (!mstate.groups.length) {
+      $("#dedup-summary-card").hidden = true;
+      $("#dedup-footer-bar").hidden = true;
+      updateSelectedCount();
+      return;
+    }
+
+    // Summary line
+    const nGroups = mstate.groups.length;
+    let nDupes = 0;
+    let reclaim = 0;
+    mstate.groups.forEach((g) => {
+      nDupes += Math.max(0, g.length - 1);
+      for (let i = 1; i < g.length; i++) reclaim += (g[i].size || 0);
+    });
+    $("#dedup-summary-line").textContent =
+      `${nGroups} gruppi · ${nDupes} duplicati · spazio recuperabile ~${_fmtBytes(reclaim)}`;
+    $("#dedup-summary-card").hidden = false;
+
+    // Render each group card
+    mstate.groups.forEach((group, gi) => {
+      const card = document.createElement("div");
+      card.className = "card dedup-group-card";
+
+      const totalSize = group.reduce((s, e) => s + (e.size || 0), 0);
+      const fpPreview = (group[0].fingerprint || "").slice(0, 12);
+      const header = document.createElement("div");
+      header.className = "dedup-group-header";
+      header.innerHTML = `
+        <strong>Gruppo ${gi + 1}</strong>
+        · <span>${group.length} file</span>
+        · <span>totale ${_fmtBytes(totalSize)}</span>
+        · <span class="dedup-fp">fp ${_escapeHtml(fpPreview)}…</span>
+      `;
+      card.appendChild(header);
+
+      const list = document.createElement("div");
+      list.className = "dedup-file-list";
+
+      group.forEach((entry, idx) => {
+        const isKeep = idx === 0;  // primo = bitrate piu' alto = da tenere
+        const row = document.createElement("div");
+        row.className = "dedup-file-row" + (isKeep ? " dedup-keep" : "");
+
+        // Pre-selezione: cancella tutti tranne il primo
+        if (!isKeep) mstate.toDelete.add(entry.path);
+
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.className = "dedup-file-check";
+        checkbox.checked = !isKeep;
+        checkbox.disabled = isKeep;
+        checkbox.title = isKeep
+          ? "File da tenere (bitrate massimo)"
+          : "Marca per la cancellazione";
+        checkbox.addEventListener("change", () => {
+          if (checkbox.checked) mstate.toDelete.add(entry.path);
+          else mstate.toDelete.delete(entry.path);
+          updateSelectedCount();
+        });
+        row.appendChild(checkbox);
+
+        const info = document.createElement("div");
+        info.className = "dedup-file-info";
+        const kbps = entry.bitrate ? `${entry.bitrate}k` : "—";
+        const keepBadge = isKeep ? '<span class="dedup-keep-badge">TIENI</span> ' : "";
+        info.innerHTML = `
+          <div class="dedup-file-title">${keepBadge}${_escapeHtml(_basename(entry.path))}</div>
+          <div class="dedup-file-meta">
+            ${_escapeHtml(kbps)} · ${_escapeHtml(_fmtBytes(entry.size))} · ${_escapeHtml(_fmtDur(entry.duration))}
+          </div>
+          <div class="dedup-file-path">${_escapeHtml(entry.path)}</div>
+        `;
+        row.appendChild(info);
+
+        // Preview audio (riusa _makePreviewBtn della sezione Upgrade)
+        const playSlot = document.createElement("div");
+        playSlot.className = "dedup-file-play";
+        playSlot.appendChild(_makePreviewBtn(entry.path));
+        row.appendChild(playSlot);
+
+        list.appendChild(row);
+      });
+
+      card.appendChild(list);
+      wrap.appendChild(card);
+    });
+
+    updateSelectedCount();
+  }
+
+  async function pickFolder() {
+    const p = await window.pywebview.api.dedup_pick_folder();
+    if (p && typeof p === "string") {
+      mstate.folder = p;
+      $("#dedup-path-display").textContent = p;
+      $("#dedup-start-btn").disabled = false;
+      setStatus("", "");
+    }
+  }
+
+  async function startScan() {
+    if (!mstate.folder) return;
+    mstate.recursive = $("#dedup-recursive").checked;
+    mstate.scanning = true;
+    mstate.groups = [];
+    mstate.toDelete.clear();
+    renderGroups();
+    $("#dedup-start-btn").disabled = true;
+    $("#dedup-pick-folder").disabled = true;
+    $("#dedup-stop-btn").hidden = false;
+    $("#dedup-log").innerHTML = "";
+    $("#dedupProgressFill").style.width = "0%";
+    $("#dedupPercent").textContent = "0%";
+    $("#dedupCounter").textContent = "Scansione in corso…";
+    setStatus("Scansione in corso...", "loading");
+
+    let res;
+    try {
+      res = await window.pywebview.api.dedup_start_scan({
+        directory: mstate.folder,
+        recursive: mstate.recursive,
+      });
+    } catch (e) {
+      setStatus("Errore avvio: " + ((e && e.message) || e), "error");
+      finishScan();
+      return;
+    }
+    if (!res || !res.ok) {
+      const msg = (res && res.error) || "Impossibile avviare la scansione";
+      setStatus(msg, "error");
+      if (!handleGateBlock(res || {})) toast(msg, "error");
+      finishScan();
+    }
+  }
+
+  async function stopScan() {
+    try { await window.pywebview.api.dedup_stop_scan(); } catch (e) { console.error(e); }
+  }
+
+  function finishScan() {
+    mstate.scanning = false;
+    $("#dedup-start-btn").disabled = !mstate.folder;
+    $("#dedup-pick-folder").disabled = false;
+    $("#dedup-stop-btn").hidden = true;
+    updateSelectedCount();
+  }
+
+  async function moveSelectedToTrash() {
+    const paths = [...mstate.toDelete];
+    if (!paths.length) return;
+    const msg = paths.length === 1
+      ? "Spostare 1 file nel cestino?"
+      : `Spostare ${paths.length} file nel cestino?`;
+    if (!confirm(msg)) return;
+
+    const btn = $("#dedup-trash-btn");
+    btn.disabled = true;
+    let res;
+    try {
+      res = await window.pywebview.api.dedup_move_to_trash(paths);
+    } catch (e) {
+      toast("Errore: " + ((e && e.message) || e), "error");
+      btn.disabled = false;
+      return;
+    }
+    if (!res || !res.ok) {
+      toast((res && res.error) || "Errore spostamento", "error");
+      btn.disabled = false;
+      return;
+    }
+
+    const moved = new Set(res.moved || []);
+    // Rimuovi dai gruppi i file spostati; scarta gruppi che scendono sotto i 2
+    mstate.groups = mstate.groups
+      .map((g) => g.filter((e) => !moved.has(e.path)))
+      .filter((g) => g.length >= 2);
+    renderGroups();
+
+    const okN = res.moved_count || 0;
+    const failN = res.failed_count || 0;
+    if (failN > 0) {
+      toast(`${okN} spostati, ${failN} falliti`, "error");
+    } else {
+      toast(`${okN} file spostati nel cestino`, "success");
+    }
+  }
+
+  async function init() {
+    // Bind eventi
+    $("#dedup-pick-folder").addEventListener("click", pickFolder);
+    $("#dedup-start-btn").addEventListener("click", startScan);
+    $("#dedup-stop-btn").addEventListener("click", stopScan);
+    $("#dedup-trash-btn").addEventListener("click", moveSelectedToTrash);
+    $("#dedup-recursive").addEventListener("change", (e) => {
+      mstate.recursive = e.target.checked;
+    });
+
+    // Ripristina ultima cartella + recursive da config
+    const cfg = state.config || {};
+    if (cfg.dedup_last_folder) {
+      mstate.folder = cfg.dedup_last_folder;
+      $("#dedup-path-display").textContent = cfg.dedup_last_folder;
+      $("#dedup-start-btn").disabled = false;
+    }
+    if (typeof cfg.dedup_recursive === "boolean") {
+      $("#dedup-recursive").checked = cfg.dedup_recursive;
+      mstate.recursive = cfg.dedup_recursive;
+    }
+
+    // Bridge handlers
+    bridgeHandlers["dedup:progress"] = (p) => {
+      if (!p) return;
+      if (typeof p.overall === "number") {
+        const pct = Math.round(p.overall * 100);
+        $("#dedupProgressFill").style.width = pct + "%";
+        $("#dedupPercent").textContent = pct + "%";
+      }
+      if (typeof p.idx === "number" && typeof p.total === "number" && p.total > 0) {
+        const status = p.status || "";
+        let label;
+        if (status === "cached") label = `File ${p.idx}/${p.total} · cache`;
+        else if (status === "computing") label = `File ${p.idx}/${p.total} · calcolo`;
+        else if (status === "completed") label = `Completato: ${p.total} file`;
+        else if (status === "stopped") label = "Interrotta";
+        else if (status === "error") label = `File ${p.idx}/${p.total} · errore`;
+        else label = `File ${p.idx}/${p.total}`;
+        $("#dedupCounter").textContent = label;
+      }
+    };
+
+    bridgeHandlers["dedup:done"] = (p) => {
+      mstate.groups = (p && p.groups) || [];
+      renderGroups();
+      if (p && p.ok === false) {
+        setStatus(p.error || "Errore scansione", "error");
+      } else if (!mstate.groups.length) {
+        setStatus("Nessun duplicato trovato", "ok");
+      } else {
+        setStatus(`Trovati ${mstate.groups.length} gruppi di duplicati`, "ok");
+      }
+      finishScan();
+    };
   }
 
   return { init };

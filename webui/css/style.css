@@ -1826,3 +1826,139 @@ input[type="number"]::-webkit-inner-spin-button {
   word-break: break-all;
   font-family: "SF Mono", Menlo, Consolas, monospace;
 }
+
+/* ===============================
+   DEDUP tab (audio duplicati)
+   =============================== */
+.dedup-summary {
+  font-size: 14px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+
+.dedup-group-card {
+  padding: 14px 16px;
+}
+
+.dedup-group-header {
+  font-size: 13px;
+  color: var(--text-2);
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+.dedup-group-header strong {
+  color: var(--text-1);
+  font-size: 14px;
+}
+.dedup-fp {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.dedup-file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dedup-file-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg-elev);
+  transition: background 0.15s ease;
+}
+.dedup-file-row:hover {
+  background: var(--bg-elev-hover, var(--bg-elev));
+}
+
+.dedup-file-check {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--red);
+}
+.dedup-file-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dedup-file-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.dedup-file-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dedup-file-meta {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dedup-file-path {
+  font-size: 10px;
+  color: var(--text-3);
+  margin-top: 2px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  word-break: break-all;
+  opacity: 0.6;
+}
+
+.dedup-file-play {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+/* File "da tenere" (bitrate massimo del gruppo) — verde */
+.dedup-keep {
+  background: var(--green-dim);
+  border-left: 3px solid var(--green);
+}
+.dedup-keep .dedup-file-title {
+  color: var(--green-text);
+}
+
+.dedup-keep-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--green);
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.dedup-footer-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  border-radius: var(--r-md);
+  background: var(--bg-card);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border);
+}
+
