@@ -188,7 +188,10 @@ def _copy_or_convert_to_mp3(
     """
     try:
         if src.suffix.lower() == ".mp3":
-            shutil.copy2(str(src), str(dst))
+            # shutil.copy (non copy2): mtime del target = ora, non quello
+            # del sorgente. Così è chiaro nel Finder che il file è stato
+            # aggiornato dall'upgrade.
+            shutil.copy(str(src), str(dst))
             return dst.exists()
         # Convert non-mp3 -> mp3 320k
         ffmpeg_bin = find_ffmpeg() or "ffmpeg"
@@ -431,7 +434,7 @@ def upgrade_folder(
                     progress_callback(processed, total, filepath.name,
                                       "resolve_wait", current_kbps, 0)
                 try:
-                    choice = resolve_callback(filepath.name, cand_payload) or {}
+                    choice = resolve_callback(str(filepath), cand_payload) or {}
                 except Exception:
                     choice = {}
                 action = (choice.get("action") or "").strip()

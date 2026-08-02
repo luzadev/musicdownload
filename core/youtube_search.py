@@ -63,6 +63,14 @@ def search_youtube(query: str, limit: int = 50) -> list:
         video_id = e.get("id") or ""
         url = e.get("url") or (f"https://www.youtube.com/watch?v={video_id}" if video_id else "")
         image_url = f"https://i.ytimg.com/vi/{video_id}/mqdefault.jpg" if video_id else ""
+        # yt-dlp `upload_date` è YYYYMMDD (stringa). Lo converto in ISO YYYY-MM-DD.
+        # Con --flat-playlist può essere assente; in tal caso resta stringa vuota.
+        raw_date = str(e.get("upload_date") or "").strip()
+        release_date = ""
+        if len(raw_date) == 8 and raw_date.isdigit():
+            release_date = f"{raw_date[0:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+        elif raw_date:
+            release_date = raw_date  # forma sconosciuta, passa così
         result.append({
             "id": video_id,
             "url": url,
@@ -70,5 +78,6 @@ def search_youtube(query: str, limit: int = 50) -> list:
             "channel": e.get("uploader") or e.get("channel") or "",
             "duration_sec": int(e.get("duration") or 0),
             "image_url": image_url,
+            "release_date": release_date,
         })
     return result

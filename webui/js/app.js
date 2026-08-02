@@ -776,6 +776,7 @@ $("#upgradeBtn").addEventListener("click", async () => {
     recursive: $("#upRecursive").checked,
     threshold: parseInt($("#upThreshold").value, 10) || 310,
     archive_dir: state.upArchiveDir || "",
+    archive_auto_pick: $("#upArchiveAutoPick").checked,
   });
   if (!res.ok) {
     if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
@@ -809,14 +810,98 @@ function _escapeHtml(s) {
   }[c]));
 }
 
+// --- Audio preview per il picker (single audio element condiviso) ---
+let _upgradePreviewAudio = null;
+let _upgradePreviewBtn = null;  // bottone corrente in "playing" state
+
+function _fileUrl(absPath) {
+  if (!absPath) return "";
+  // Split percorso e encode ogni segment (spazi → %20, unicode → utf-8 encoded)
+  const parts = String(absPath).split("/").map(encodeURIComponent);
+  return "file://" + parts.join("/");
+}
+
+function _stopUpgradePreview() {
+  if (_upgradePreviewAudio) {
+    // Rimuovi handler error PRIMA di pause/clear così stop manuale
+    // non fa scattare il toast di errore
+    _upgradePreviewAudio.onerror = null;
+    _upgradePreviewAudio.onended = null;
+    try { _upgradePreviewAudio.pause(); } catch {}
+    try { _upgradePreviewAudio.removeAttribute("src"); } catch {}
+    _upgradePreviewAudio = null;
+  }
+  if (_upgradePreviewBtn) {
+    _upgradePreviewBtn.textContent = "▶";
+    _upgradePreviewBtn.classList.remove("playing");
+    _upgradePreviewBtn = null;
+  }
+}
+
+function _makePreviewBtn(absPath) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "upgrade-preview-btn";
+  btn.textContent = "▶";
+  btn.title = "Anteprima audio";
+  btn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Se già in play su questo bottone → stop
+    if (_upgradePreviewBtn === btn) {
+      _stopUpgradePreview();
+      return;
+    }
+    _stopUpgradePreview();
+    btn.textContent = "⏳";
+    btn.disabled = true;
+    let res;
+    try {
+      res = await window.pywebview.api.read_audio_data_url(absPath);
+    } catch (err) {
+      btn.textContent = "▶";
+      btn.disabled = false;
+      toast && toast("Errore lettura file: " + err, "error");
+      return;
+    }
+    btn.disabled = false;
+    if (!res || !res.ok) {
+      btn.textContent = "▶";
+      toast && toast(res && res.error || "Impossibile leggere il file", "error");
+      return;
+    }
+    _upgradePreviewAudio = new Audio(res.data_url);
+    _upgradePreviewBtn = btn;
+    btn.textContent = "■";
+    btn.classList.add("playing");
+    _upgradePreviewAudio.onended = _stopUpgradePreview;
+    _upgradePreviewAudio.onerror = () => {
+      // Solo se il listener è ancora agganciato (stop manuale lo azzera prima)
+      const wasPlaying = !!_upgradePreviewAudio;
+      _stopUpgradePreview();
+      if (wasPlaying) toast && toast("Errore riproduzione audio", "error");
+    };
+    _upgradePreviewAudio.play().catch(() => _stopUpgradePreview());
+  });
+  return btn;
+}
+
 function openUpgradePicker(payload) {
   const modal = $("#upgradePickerModal");
   if (!modal) return;
   const file = (payload && payload.file) || "";
+  const sourcePath = (payload && payload.source_path) || "";
   const candidates = (payload && payload.candidates) || [];
-  state.upPicker = { file, candidates, selectedIdx: -1 };
+  state.upPicker = { file, sourcePath, candidates, selectedIdx: -1 };
 
-  $("#upgradePickerFilename").textContent = "Brano: " + file;
+  // Header: filename + play button per il source
+  const header = $("#upgradePickerFilename");
+  header.innerHTML = "";
+  const label = document.createElement("span");
+  label.textContent = "Brano da upgradare: " + file + " ";
+  header.appendChild(label);
+  if (sourcePath) header.appendChild(_makePreviewBtn(sourcePath));
+
   const list = $("#upgradePickerList");
   list.innerHTML = "";
   candidates.forEach((c, i) => {
@@ -832,8 +917,13 @@ function openUpgradePicker(payload) {
         <div class="upgrade-picker-meta">${_escapeHtml(kbps)} · ${_escapeHtml(_fmtBytes(c.size))} · similarity ${simPct}%</div>
         <div class="upgrade-picker-path">${_escapeHtml(c.path || "")}</div>
       </div>
+      <span class="upgrade-picker-play"></span>
     `;
-    row.addEventListener("click", () => {
+    const playSlot = row.querySelector(".upgrade-picker-play");
+    if (playSlot && c.path) playSlot.appendChild(_makePreviewBtn(c.path));
+    row.addEventListener("click", (e) => {
+      // Se il click viene dal bottone play, non selezionare la riga
+      if (e.target.closest(".upgrade-preview-btn")) return;
       state.upPicker.selectedIdx = i;
       $("#upgradePickerUseBtn").disabled = false;
       $$("#upgradePickerList .upgrade-picker-row").forEach((r) =>
@@ -849,6 +939,7 @@ function openUpgradePicker(payload) {
 }
 
 function closeUpgradePicker() {
+  _stopUpgradePreview();
   const modal = $("#upgradePickerModal");
   if (modal) modal.hidden = true;
 }
@@ -873,6 +964,12 @@ $("#upgradePickerYoutubeBtn")?.addEventListener("click", () => {
 
 $("#upgradePickerSkipBtn")?.addEventListener("click", () => {
   _sendUpgradeChoice({ action: "skip" });
+});
+
+$("#upgradePickerCancelAllBtn")?.addEventListener("click", async () => {
+  // Skip questo file per sbloccare il worker, poi ferma l'intera coda
+  _sendUpgradeChoice({ action: "skip" });
+  try { await window.pywebview.api.stop_upgrade(); } catch {}
 });
 
 $("#upgradePickerCloseBtn")?.addEventListener("click", () => {

@@ -1680,7 +1680,20 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 .beatport-table .col-pos   { width: 40px; color: var(--text-3); font-variant-numeric: tabular-nums; }
 .beatport-table .col-dur   { width: 70px; color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
+.beatport-table .col-date  { width: 100px; color: var(--text-2); font-variant-numeric: tabular-nums; font-size: 12px; white-space: nowrap; }
 .beatport-table .col-state { width: 130px; font-size: 12px; }
+
+.beatport-table thead th.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+.beatport-table thead th.sortable:hover { color: var(--text); }
+.beatport-table thead th .sort-arrow {
+  font-size: 10px;
+  margin-left: 4px;
+  color: var(--indigo-text);
+}
 
 .beatport-table input[type="checkbox"] {
   width: 16px;
@@ -1720,6 +1733,17 @@ input[type="number"]::-webkit-inner-spin-button {
   white-space: normal;
   user-select: none;
 }
+
+/* Modal picker: più largo dei modal standard + footer con wrap
+   per far entrare i 4 bottoni senza troncare */
+#upgradePickerModal .modal {
+  min-width: 620px;
+  max-width: 780px;
+}
+#upgradePickerModal .modal-foot {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
 .modal-sub {
   font-size: 12px;
   color: var(--text-2);
@@ -1756,6 +1780,33 @@ input[type="number"]::-webkit-inner-spin-button {
 .upgrade-picker-info {
   flex: 1;
   min-width: 0;
+}
+.upgrade-picker-play {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.upgrade-preview-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--bg-input, transparent);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  margin-left: 6px;
+  transition: background 0.15s ease, transform 0.1s ease;
+}
+.upgrade-preview-btn:hover { background: var(--bg-input-hover, rgba(255,255,255,0.05)); }
+.upgrade-preview-btn.playing {
+  background: var(--green, #1DB954);
+  color: #000;
+  border-color: var(--green, #1DB954);
 }
 .upgrade-picker-title {
   font-weight: 600;

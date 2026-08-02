@@ -887,6 +887,7 @@ class Api:
 
         directory = (payload.get("directory") or "").strip()
         archive_dir = (payload.get("archive_dir") or "").strip() or None
+        archive_auto_pick = bool(payload.get("archive_auto_pick", False))
         recursive = bool(payload.get("recursive", False))
         try:
             threshold = int(payload.get("threshold", 310))
@@ -912,7 +913,7 @@ class Api:
 
         self._upgrade_thread = threading.Thread(
             target=self._upgrade_worker,
-            args=(directory, threshold, cookies_path, recursive, archive_dir),
+            args=(directory, threshold, cookies_path, recursive, archive_dir, archive_auto_pick),
             daemon=True,
         )
         self._upgrade_thread.start()
@@ -928,6 +929,32 @@ class Api:
             pass
         self._log("upgrade", "[INFO] Interruzione richiesta...")
         return {"ok": True}
+
+    def read_audio_data_url(self, path: str) -> dict:
+        """Legge un file audio locale e lo ritorna come data URL base64
+        per il preview HTML5 nel modal upgrade. WKWebView (macOS pywebview)
+        blocca `file://` da HTML servito via file://, quindi passiamo dal
+        bridge. Limite: 60MB per non esplodere la memoria JS."""
+        import base64 as _b64
+        MAX = 60 * 1024 * 1024
+        try:
+            p = Path(path or "")
+            if not p.exists() or not p.is_file():
+                return {"ok": False, "error": "File non trovato"}
+            size = p.stat().st_size
+            if size > MAX:
+                return {"ok": False, "error": f"File troppo grande ({size // 1024 // 1024}MB, max 60MB)"}
+            ext = p.suffix.lower().lstrip(".")
+            mime_map = {
+                "mp3": "audio/mpeg", "m4a": "audio/mp4", "aac": "audio/aac",
+                "wav": "audio/wav", "flac": "audio/flac", "ogg": "audio/ogg",
+                "opus": "audio/opus", "webm": "audio/webm",
+            }
+            mime = mime_map.get(ext, "audio/mpeg")
+            b64 = _b64.b64encode(p.read_bytes()).decode("ascii")
+            return {"ok": True, "data_url": f"data:{mime};base64,{b64}"}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def upgrade_resolve_candidates(self, choice: dict) -> dict:
         """Riceve la scelta utente dal modal 'match locali multipli' e la
@@ -949,7 +976,8 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def _upgrade_worker(self, directory, threshold, cookies_path, recursive,
-                         archive_dir: Optional[str] = None):
+                         archive_dir: Optional[str] = None,
+                         archive_auto_pick: bool = False):
         view = "upgrade"
 
         def progress_cb(idx, total, filename, status, old_kbps, new_kbps):
@@ -999,10 +1027,21 @@ class Api:
 
             self._emit("upgrade:progress", payload_evt)
 
-        def resolve_cb(filename: str, candidates: list) -> dict:
-            """Bloccante: emette evento e attende scelta utente via queue."""
+        def resolve_cb(source_path: str, candidates: list) -> dict:
+            """Bloccante: emette evento e attende scelta utente via queue.
+            Se archive_auto_pick=True, salta il modal e sceglie il primo
+            candidato (già ordinato per bitrate DESC nel core).
+            `source_path` è il path assoluto del file sorgente (per il preview
+            audio nel modal)."""
+            src_name = Path(source_path).name if source_path else ""
+            if archive_auto_pick and candidates:
+                top = candidates[0]
+                path = top.get("path") if isinstance(top, dict) else str(top)
+                self._log(view, f"[AUTO] {src_name}: match multipli, uso {Path(path).name}")
+                return {"action": "use_local", "path": path}
             self._emit("upgrade:candidates_needed", {
-                "file": filename,
+                "file": src_name,
+                "source_path": source_path,
                 "candidates": candidates,
             })
             try:

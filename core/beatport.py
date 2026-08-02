@@ -24,6 +24,7 @@ class BeatportTrack:
     duration_sec: int
     beatport_id: int
     image_url: str = ""   # URL cover art (default vuoto per retrocompatibilità test)
+    release_date: str = ""  # ISO YYYY-MM-DD, vuoto se mancante
 
     @property
     def display(self) -> str:
@@ -177,6 +178,7 @@ def _parse_tracks(data: dict) -> list:
                 duration_sec=length_ms // 1000,
                 beatport_id=int(item.get("id") or 0),
                 image_url=_extract_image_url(item.get("image")),
+                release_date=str(item.get("publish_date") or item.get("new_release_date") or "").strip(),
             )
         except (TypeError, ValueError) as e:
             raise BeatportParseError(f"track[{i}] shape inattesa: {e}") from e

@@ -280,9 +280,13 @@
               <button class="btn btn-ghost pill btn-sm" id="upArchiveBrowseBtn">📂 Sfoglia</button>
               <button class="btn btn-ghost pill btn-sm" id="upArchiveClearBtn" hidden>Rimuovi</button>
             </div>
+            <label style="display:flex;gap:6px;align-items:center;margin-top:8px;font-size:13px;color:var(--text-2);">
+              <input type="checkbox" id="upArchiveAutoPick"/>
+              <span>Scelta automatica se ci sono più match (usa quello a bitrate più alto)</span>
+            </label>
             <div class="hint">
               <span class="hint-ico">ⓘ</span>
-              <div>Se selezionata, l'app cerca versioni HQ del brano nella tua libreria locale prima di scaricare da YouTube. In caso di match multipli scegli tu quale usare.</div>
+              <div>Se selezionata, l'app cerca versioni HQ del brano nella tua libreria locale prima di scaricare da YouTube. In caso di match multipli scegli tu quale usare — oppure attiva "Scelta automatica" per non fermarti.</div>
             </div>
           </div>
         </div>
@@ -1289,7 +1293,8 @@
       <div class="modal-foot">
         <button class="btn btn-primary pill" id="upgradePickerUseBtn" disabled>Usa selezionato</button>
         <button class="btn btn-ghost pill" id="upgradePickerYoutubeBtn">Cerca su YouTube</button>
-        <button class="btn btn-danger pill" id="upgradePickerSkipBtn">Salta</button>
+        <button class="btn btn-ghost pill" id="upgradePickerSkipBtn">Salta</button>
+        <button class="btn btn-danger pill" id="upgradePickerCancelAllBtn">■ Annulla tutto</button>
       </div>
     </div>
   </div>
