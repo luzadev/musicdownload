@@ -136,40 +136,99 @@ def _cache_put(conn: sqlite3.Connection, path: str, size: int, mtime: float,
 # ------------------------------------------------------------------
 # fpcalc
 # ------------------------------------------------------------------
-def compute_fingerprint(fpcalc: str, path: str) -> Optional[dict]:
-    """Chiama `fpcalc -json <file>` e ritorna {duration, fingerprint}.
-
-    Ritorna None su qualsiasi errore (fpcalc mancante, file corrotto,
-    timeout, JSON malformato).
-    """
-    if not fpcalc:
-        return None
+def _run_fpcalc(fpcalc: str, path: str, length: Optional[int] = None) -> dict:
+    """Esegue fpcalc una volta. Ritorna {duration, fingerprint} su successo
+    o {_error: str} su fallimento."""
+    cmd = [fpcalc, "-json"]
+    if length is not None:
+        cmd += ["-length", str(length)]
+    cmd.append(str(path))
     try:
         proc = subprocess.run(
-            [fpcalc, "-json", str(path)],
+            cmd,
             capture_output=True,
             text=True,
             timeout=_FPCALC_TIMEOUT_SEC,
             **subprocess_flags(),
         )
     except subprocess.TimeoutExpired:
-        return None
-    except (OSError, ValueError):
-        return None
+        return {"_error": f"timeout {_FPCALC_TIMEOUT_SEC}s"}
+    except (OSError, ValueError) as e:
+        return {"_error": f"subprocess: {e}"}
     if proc.returncode != 0:
-        return None
+        err = (proc.stderr or proc.stdout or "").strip().splitlines()
+        msg = err[-1] if err else f"exit {proc.returncode}"
+        return {"_error": msg[:200]}
     try:
         data = json.loads(proc.stdout or "{}")
-    except (json.JSONDecodeError, ValueError):
-        return None
+    except (json.JSONDecodeError, ValueError) as e:
+        return {"_error": f"JSON malformato: {e}"}
     fp = data.get("fingerprint")
     if not fp:
-        return None
+        return {"_error": "fingerprint vuoto (audio troppo corto?)"}
     try:
         dur = float(data.get("duration") or 0)
     except (TypeError, ValueError):
         dur = 0.0
     return {"duration": dur, "fingerprint": str(fp)}
+
+
+def compute_fingerprint(fpcalc: str, path: str) -> Optional[dict]:
+    """Chiama fpcalc e ritorna {duration, fingerprint} o {_error}.
+
+    Se il primo tentativo (full length) fallisce con "Invalid data" o simili
+    (frame audio corrotti che libav rifiuta), riprova con `-length 30`.
+    Molti file danneggiati hanno i frame corrotti nella parte finale e
+    limitando la scansione ai primi 30s si riesce a estrarre comunque
+    un fingerprint affidabile (30s bastano per l'unicità Chromaprint).
+    """
+    if not fpcalc:
+        return {"_error": "fpcalc non trovato nel bundle"}
+
+    res = _run_fpcalc(fpcalc, path)
+    if "fingerprint" in res:
+        return res
+
+    err_msg = res.get("_error", "").lower()
+
+    # Retry 1: frame audio corrotti → riduci finestra a 30s
+    corrupt_signals = ("invalid data", "decoding audio frame",
+                       "error while decoding", "invalid frame")
+    if any(sig in err_msg for sig in corrupt_signals):
+        res2 = _run_fpcalc(fpcalc, path, length=30)
+        if "fingerprint" in res2:
+            res2["_partial"] = True  # 30s soltanto
+            return res2
+
+    # Retry 2: fingerprint vuoto → prova con finestra piu' lunga (60s)
+    # nel caso l'intro sia silenzio/muto (chromaprint richiede audio "reale")
+    if "vuoto" in err_msg or "empty" in err_msg:
+        res2 = _run_fpcalc(fpcalc, path, length=60)
+        if "fingerprint" in res2:
+            res2["_partial"] = True
+            return res2
+        # Ancora vuoto → prova algoritmo differente (chromaprint algo 1)
+        # tramite subprocess diretto perche' _run_fpcalc non lo supporta
+        try:
+            proc = subprocess.run(
+                [fpcalc, "-json", "-length", "60", "-algorithm", "1", str(path)],
+                capture_output=True, text=True,
+                timeout=_FPCALC_TIMEOUT_SEC,
+                **subprocess_flags(),
+            )
+            if proc.returncode == 0:
+                data = json.loads(proc.stdout or "{}")
+                fp = data.get("fingerprint")
+                if fp:
+                    return {
+                        "duration": float(data.get("duration") or 0),
+                        "fingerprint": str(fp),
+                        "_partial": True,
+                    }
+        except Exception:
+            pass
+
+    return res
 
 
 # ------------------------------------------------------------------
@@ -193,10 +252,97 @@ def _iter_audio_files(directory: str, recursive: bool) -> list[Path]:
     return files
 
 
+def _scan_by_filename(files: list, progress_callback: Optional[Callable],
+                       group_callback: Optional[Callable] = None,
+                       similarity_threshold: float = 0.8) -> list[list[dict]]:
+    """Raggruppa file per similarità nome (Jaccard sui token normalizzati),
+    algoritmo INCREMENTALE: per ogni nuovo file cerca match tra i gruppi già
+    formati (lookup O(K) dove K = numero gruppi). Emette streaming via
+    `group_callback` appena un gruppo raggiunge ≥ 2 file.
+    """
+    from core.upgrader import _normalize_stem  # riuso
+
+    def _pc(idx, total_n, name, status, err=""):
+        if not progress_callback:
+            return
+        try:
+            progress_callback(idx, total_n, name, status, err)
+        except TypeError:
+            progress_callback(idx, total_n, name, status)
+
+    def _gc(group_id: str, entries: list) -> None:
+        if group_callback:
+            try:
+                group_callback({"id": group_id, "entries": list(entries)})
+            except Exception:
+                pass
+
+    total = len(files)
+    # Ogni voce: {"id": str, "key_tokens": frozenset, "entries": [dict]}
+    groups: list = []
+
+    for i, fp_path in enumerate(files, start=1):
+        if is_stopped():
+            _pc(i - 1, total, "", "stopped")
+            break
+        try:
+            size = fp_path.stat().st_size
+        except OSError as e:
+            _pc(i, total, fp_path.name, "error", f"stat: {e}")
+            continue
+        tokens = frozenset(_normalize_stem(fp_path.stem))
+        if not tokens:
+            _pc(i, total, fp_path.name, "error", "nome senza token utili")
+            continue
+        try:
+            bitrate = get_bitrate(fp_path)
+        except Exception:
+            bitrate = 0
+        entry = {
+            "path": str(fp_path), "size": size, "bitrate": bitrate,
+            "duration": 0, "fingerprint": "",
+        }
+
+        # Cerca match nei gruppi già formati (lineare sui gruppi, non sui file)
+        matched = None
+        for g in groups:
+            common = len(tokens & g["key_tokens"])
+            if common == 0:
+                continue
+            union = len(tokens | g["key_tokens"])
+            if union > 0 and (common / union) >= similarity_threshold:
+                matched = g
+                break
+
+        if matched is not None:
+            was_solo = len(matched["entries"]) == 1
+            matched["entries"].append(entry)
+            matched["entries"].sort(key=lambda e: (-e["bitrate"], -e["size"]))
+            # Streaming: emit ogni volta che il gruppo diventa/rimane ≥ 2 file
+            _gc(matched["id"], matched["entries"])
+        else:
+            gid = f"fn_{len(groups)}_{fp_path.stem[:20]}"
+            groups.append({
+                "id": gid,
+                "key_tokens": set(tokens),
+                "entries": [entry],
+            })
+        _pc(i, total, fp_path.name, "cached")
+
+    # Ritorna solo i gruppi con >= 2 file
+    result = [sorted(g["entries"], key=lambda e: (-e["bitrate"], -e["size"]))
+              for g in groups if len(g["entries"]) >= 2]
+    result.sort(key=lambda g: -max(e["size"] for e in g))
+    _pc(total, total, "", "completed")
+    return result
+
+
 def scan_folder(
     directory: str,
     recursive: bool = True,
     progress_callback: Optional[Callable] = None,
+    method: str = "fingerprint",
+    group_callback: Optional[Callable] = None,
 ) -> list[list[dict]]:
     """Ritorna la lista di gruppi di file duplicati (>= 2 file).
 
@@ -207,8 +353,11 @@ def scan_folder(
     occupano piu' spazio vengono prima). All'interno di ogni gruppo:
     bitrate DESC, poi size DESC (il primo e' quello "da tenere").
 
-    Il fingerprint viene calcolato via `fpcalc -json` e messo in cache
-    SQLite. Al re-scan, se (size, mtime) invariati, non si rilancia fpcalc.
+    `method`:
+    - "fingerprint" (default): Chromaprint via fpcalc, preciso ma lento.
+      Cache SQLite persistente. Raggruppa per fingerprint identico.
+    - "filename": similarità Jaccard sui nomi file. Veloce ma euristico.
+      Non richiede fpcalc.
     """
     reset_stop()
     files = _iter_audio_files(directory, recursive)
@@ -217,6 +366,9 @@ def scan_folder(
         if progress_callback:
             progress_callback(0, 0, "", "completed")
         return []
+
+    if method == "filename":
+        return _scan_by_filename(files, progress_callback, group_callback)
 
     fpcalc = find_fpcalc()
     if not fpcalc:
@@ -231,18 +383,26 @@ def scan_folder(
         # {fingerprint: [entry, ...]}
         by_fp: dict[str, list[dict]] = {}
 
+        def _pc(idx, total_n, name, status, err=""):
+            """Chiama progress_callback in modo retrocompatibile: la firma
+            legacy è a 4 args, quella nuova a 5 con `error_msg` opzionale."""
+            if not progress_callback:
+                return
+            try:
+                progress_callback(idx, total_n, name, status, err)
+            except TypeError:
+                progress_callback(idx, total_n, name, status)
+
         for i, fp_path in enumerate(files, start=1):
             if is_stopped():
-                if progress_callback:
-                    progress_callback(i - 1, total, "", "stopped")
+                _pc(i - 1, total, "", "stopped")
                 return []
             try:
                 st = fp_path.stat()
                 size = st.st_size
                 mtime = st.st_mtime
-            except OSError:
-                if progress_callback:
-                    progress_callback(i, total, fp_path.name, "error")
+            except OSError as e:
+                _pc(i, total, fp_path.name, "error", f"stat: {e}")
                 continue
 
             path_str = str(fp_path)
@@ -251,15 +411,13 @@ def scan_folder(
                 fp_hash = cached["fingerprint"]
                 duration = cached["duration"]
                 bitrate = cached["bitrate"] or get_bitrate(fp_path)
-                if progress_callback:
-                    progress_callback(i, total, fp_path.name, "cached")
+                _pc(i, total, fp_path.name, "cached")
             else:
-                if progress_callback:
-                    progress_callback(i, total, fp_path.name, "computing")
+                _pc(i, total, fp_path.name, "computing")
                 res = compute_fingerprint(fpcalc, path_str)
-                if not res:
-                    if progress_callback:
-                        progress_callback(i, total, fp_path.name, "error")
+                if not res or not res.get("fingerprint"):
+                    err_msg = (res or {}).get("_error", "errore sconosciuto")
+                    _pc(i, total, fp_path.name, "error", err_msg)
                     continue
                 fp_hash = res["fingerprint"]
                 duration = res["duration"]
@@ -276,7 +434,21 @@ def scan_folder(
                 "duration": float(duration or 0),
                 "fingerprint": fp_hash,
             }
-            by_fp.setdefault(fp_hash, []).append(entry)
+            grp = by_fp.setdefault(fp_hash, [])
+            grp.append(entry)
+            # Streaming: appena il gruppo raggiunge (o supera) 2 elementi,
+            # emetti update (JS accumula/aggiorna in tempo reale)
+            if group_callback and len(grp) >= 2:
+                # Ordinamento intra-gruppo prima di emit (best-to-keep primo)
+                grp.sort(key=lambda e: (-int(e.get("bitrate") or 0),
+                                        -int(e.get("size") or 0)))
+                try:
+                    group_callback({
+                        "id": f"fp_{fp_hash[:24]}",
+                        "entries": list(grp),
+                    })
+                except Exception:
+                    pass
     finally:
         try:
             conn.close()

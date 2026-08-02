@@ -1241,6 +1241,15 @@
               <span>Ricerca ricorsiva (include sottocartelle)</span>
             </label>
           </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:13px;">
+              <span>Metodo:</span>
+              <select id="dedup-method" class="input" style="padding:4px 8px;font-size:13px;">
+                <option value="fingerprint">Audio fingerprint (preciso, lento)</option>
+                <option value="filename">Nome file (veloce, meno preciso)</option>
+              </select>
+            </label>
+          </div>
           <div id="dedup-status" class="beatport-status"></div>
         </div>
 
@@ -1259,10 +1268,13 @@
         <div class="card" id="dedup-summary-card" hidden>
           <div class="dedup-summary" id="dedup-summary-line"></div>
         </div>
-        <div id="dedup-groups-wrap"></div>
+        <div id="dedup-groups-wrap" class="dedup-groups-scroll"></div>
 
         <div class="dedup-footer-bar" id="dedup-footer-bar" hidden>
           <span class="counter" id="dedup-selected-count">0 file da cancellare</span>
+          <button id="dedup-select-suggested-btn" class="btn btn-ghost pill">
+            ✓ Seleziona tutti i consigliati
+          </button>
           <button id="dedup-trash-btn" class="btn btn-danger pill" disabled>
             <span class="ico">🗑</span> Sposta in cestino
           </button>

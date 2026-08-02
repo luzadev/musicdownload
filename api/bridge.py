@@ -1841,24 +1841,28 @@ class Api:
 
         directory = (payload.get("directory") or "").strip()
         recursive = bool(payload.get("recursive", True))
+        method = (payload.get("method") or "fingerprint").strip()
+        if method not in ("fingerprint", "filename"):
+            method = "fingerprint"
 
         if not directory:
             return {"ok": False, "error": "Cartella non impostata"}
         if not os.path.isdir(directory):
             return {"ok": False, "error": "Cartella non trovata"}
 
-        # Persist last folder/recursive
+        # Persist last folder/recursive/method
         try:
             cfg = load_config()
             cfg["dedup_last_folder"] = directory
             cfg["dedup_recursive"] = recursive
+            cfg["dedup_method"] = method
             save_config(cfg)
         except Exception:
             pass
 
         self._dedup_thread = threading.Thread(
             target=self._dedup_worker,
-            args=(directory, recursive),
+            args=(directory, recursive, method),
             daemon=True,
         )
         self._dedup_thread.start()
@@ -1890,16 +1894,18 @@ class Api:
                 "failed": result.get("failed", []),
                 "moved_count": moved_n, "failed_count": failed_n}
 
-    def _dedup_worker(self, directory: str, recursive: bool) -> None:
+    def _dedup_worker(self, directory: str, recursive: bool,
+                       method: str = "fingerprint") -> None:
         """Esegue la scansione in background e emette progress/done."""
         view = "dedup"
         dedup.reset_stop()
-        self._log(view, f"[INFO] Scansione: {directory} (recursive={recursive})")
+        method_label = "audio fingerprint" if method == "fingerprint" else "nome file"
+        self._log(view, f"[INFO] Scansione: {directory} (metodo: {method_label}, recursive={recursive})")
 
         _last = [0.0]
         _THROTTLE = 0.05
 
-        def progress_cb(idx: int, total: int, filename: str, status: str) -> None:
+        def progress_cb(idx: int, total: int, filename: str, status: str, err_msg: str = "") -> None:
             # Throttle solo eventi 'computing'/'cached' (che possono essere migliaia)
             if status in ("computing", "cached"):
                 now = time.monotonic()
@@ -1910,6 +1916,8 @@ class Api:
                 "idx": idx, "total": total,
                 "filename": filename, "status": status,
             }
+            if err_msg:
+                payload_evt["error_msg"] = err_msg
             if total > 0:
                 payload_evt["overall"] = min(idx / total, 1.0)
             if status == "completed":
@@ -1918,12 +1926,22 @@ class Api:
             elif status == "stopped":
                 self._log(view, "[INFO] Scansione interrotta.")
             elif status == "error" and filename:
-                self._log(view, f"[ERRORE] {filename}: errore lettura")
+                detail = f": {err_msg}" if err_msg else ""
+                self._log(view, f"[ERRORE] {filename}{detail}")
             self._emit("dedup:progress", payload_evt)
+
+        def group_cb(group: dict) -> None:
+            """Emit streaming: appena un gruppo raggiunge/aggiorna >=2 file."""
+            try:
+                self._emit("dedup:group", group)
+            except Exception:
+                pass
 
         try:
             groups = dedup.scan_folder(directory, recursive=recursive,
-                                       progress_callback=progress_cb)
+                                       progress_callback=progress_cb,
+                                       method=method,
+                                       group_callback=group_cb)
         except Exception as e:
             self._log(view, f"[ERRORE] {e}")
             self._emit("dedup:done", {"ok": False, "error": str(e),

@@ -3011,6 +3011,7 @@ const DedupUI = (() => {
     mstate.recursive = $("#dedup-recursive").checked;
     mstate.scanning = true;
     mstate.groups = [];
+    if (mstate._groupIndex) mstate._groupIndex.clear();
     mstate.toDelete.clear();
     renderGroups();
     $("#dedup-start-btn").disabled = true;
@@ -3022,11 +3023,13 @@ const DedupUI = (() => {
     $("#dedupCounter").textContent = "Scansione in corso…";
     setStatus("Scansione in corso...", "loading");
 
+    const method = $("#dedup-method")?.value || "fingerprint";
     let res;
     try {
       res = await window.pywebview.api.dedup_start_scan({
         directory: mstate.folder,
         recursive: mstate.recursive,
+        method,
       });
     } catch (e) {
       setStatus("Errore avvio: " + ((e && e.message) || e), "error");
@@ -3099,6 +3102,22 @@ const DedupUI = (() => {
     $("#dedup-start-btn").addEventListener("click", startScan);
     $("#dedup-stop-btn").addEventListener("click", stopScan);
     $("#dedup-trash-btn").addEventListener("click", moveSelectedToTrash);
+    $("#dedup-select-suggested-btn").addEventListener("click", () => {
+      // Reset selezione: per ogni gruppo, marca-per-cancellazione TUTTI
+      // tranne il primo (il "TIENI" consigliato). Non tocca i primi.
+      mstate.toDelete.clear();
+      mstate.groups.forEach((group) => {
+        for (let i = 1; i < group.length; i++) {
+          if (group[i] && group[i].path) mstate.toDelete.add(group[i].path);
+        }
+      });
+      // Sync checkbox nel DOM
+      $$("#dedup-groups-wrap .dedup-file-check").forEach((cb) => {
+        if (cb.disabled) return;  // skip il "TIENI"
+        cb.checked = true;
+      });
+      updateSelectedCount();
+    });
     $("#dedup-recursive").addEventListener("change", (e) => {
       mstate.recursive = e.target.checked;
     });
@@ -3113,6 +3132,9 @@ const DedupUI = (() => {
     if (typeof cfg.dedup_recursive === "boolean") {
       $("#dedup-recursive").checked = cfg.dedup_recursive;
       mstate.recursive = cfg.dedup_recursive;
+    }
+    if (cfg.dedup_method && $("#dedup-method")) {
+      $("#dedup-method").value = cfg.dedup_method;
     }
 
     // Bridge handlers
@@ -3136,8 +3158,36 @@ const DedupUI = (() => {
       }
     };
 
+    // Streaming: gruppi arrivano uno alla volta man mano che si formano.
+    // mstate.groups è una lista di ARRAY di entries (shape richiesta da
+    // renderGroups). Manteniamo un indice group_id → arrayRef per poter
+    // aggiornare in-place quando il gruppo cresce.
+    if (!mstate._groupIndex) mstate._groupIndex = new Map();
+    bridgeHandlers["dedup:group"] = (p) => {
+      if (!p || !p.id || !Array.isArray(p.entries)) return;
+      const idx = mstate._groupIndex;
+      const existing = idx.get(p.id);
+      if (existing) {
+        // Aggiorna elementi in-place (stesso riferimento array in mstate.groups)
+        existing.length = 0;
+        for (const e of p.entries) existing.push(e);
+      } else {
+        // Nuovo gruppo: array copia + tag `_id` non-enumerabile per il lookup
+        const arr = p.entries.slice();
+        Object.defineProperty(arr, "_id", { value: p.id, enumerable: false });
+        idx.set(p.id, arr);
+        mstate.groups.push(arr);
+      }
+      renderGroups();
+      setStatus(`Trovati ${mstate.groups.length} gruppi finora…`, "loading");
+    };
+
     bridgeHandlers["dedup:done"] = (p) => {
-      mstate.groups = (p && p.groups) || [];
+      // Se sono arrivati group via streaming, ignoriamo p.groups (già in mstate).
+      // Fallback: se lo streaming non ha popolato nulla, usiamo p.groups.
+      if (mstate.groups.length === 0 && p && Array.isArray(p.groups)) {
+        mstate.groups = p.groups;
+      }
       renderGroups();
       if (p && p.ok === false) {
         setStatus(p.error || "Errore scansione", "error");

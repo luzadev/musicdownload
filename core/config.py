@@ -81,6 +81,7 @@ DEFAULTS = {
     # ---- Dedup (audio duplicati via Chromaprint) ----
     "dedup_last_folder": "",
     "dedup_recursive": True,
+    "dedup_method": "fingerprint",  # "fingerprint" | "filename"
     # ---- Licenza ----
     "license_key": "",          # chiave fornita all'utente via email
     "license_email": "",        # email associata all'acquisto

@@ -1962,3 +1962,11 @@ input[type="number"]::-webkit-inner-spin-button {
   border: 1px solid var(--border);
 }
 
+/* Lista risultati Dedup con scroll interno: l'header (hero sticky) e il
+   footer restano visibili anche se ci sono centinaia di gruppi. */
+.dedup-groups-scroll {
+  max-height: 55vh;
+  overflow-y: auto;
+  padding-right: 6px;  /* spazio per la scrollbar sul bordo */
+}
+

@@ -160,12 +160,13 @@ class TestMoveToTrash:
 # compute_fingerprint
 # ------------------------------------------------------------------
 class TestComputeFingerprint:
-    def test_timeout_returns_none(self):
-        """Timeout di fpcalc -> None (non alza eccezione)."""
+    def test_timeout_returns_error(self):
+        """Timeout di fpcalc -> dict con _error, no fingerprint."""
         with mock.patch("core.dedup.subprocess.run",
                         side_effect=subprocess.TimeoutExpired(cmd="fpcalc", timeout=30)):
             result = dedup.compute_fingerprint("/fake/fpcalc", "/some/file.mp3")
-        assert result is None
+        assert result and "_error" in result and "timeout" in result["_error"]
+        assert "fingerprint" not in result
 
     def test_success_returns_dict(self):
         """Output JSON valido -> {duration, fingerprint}."""
@@ -176,15 +177,17 @@ class TestComputeFingerprint:
             result = dedup.compute_fingerprint("/fake/fpcalc", "/some/file.mp3")
         assert result == {"duration": 123.4, "fingerprint": "ABCDEF"}
 
-    def test_bad_json_returns_none(self):
+    def test_bad_json_returns_error(self):
         fake_proc = mock.Mock()
         fake_proc.returncode = 0
         fake_proc.stdout = "not json at all"
         with mock.patch("core.dedup.subprocess.run", return_value=fake_proc):
             result = dedup.compute_fingerprint("/fake/fpcalc", "/some/file.mp3")
-        assert result is None
+        assert result and "_error" in result and "JSON" in result["_error"]
+        assert "fingerprint" not in result
 
-    def test_missing_fpcalc_returns_none(self):
+    def test_missing_fpcalc_returns_error(self):
         # Nessuna chiamata subprocess se fpcalc e' vuoto
         result = dedup.compute_fingerprint("", "/some/file.mp3")
-        assert result is None
+        assert result and "_error" in result and "fpcalc" in result["_error"]
+        assert "fingerprint" not in result
