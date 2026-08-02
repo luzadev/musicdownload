@@ -272,7 +272,7 @@ def update_cover_only(
         "--output", str(temp_dir / "cover"),
         video_url,
     ]
-    ffmpeg_dir = _find_ffmpeg_dir()
+    ffmpeg_dir = find_ffmpeg_dir()
     if ffmpeg_dir:
         cmd.extend(["--ffmpeg-location", ffmpeg_dir])
     if cookies_path and Path(cookies_path).exists():
