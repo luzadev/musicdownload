@@ -11,6 +11,7 @@ pythonnet==3.0.5 ; sys_platform == "win32"
 clr-loader==0.2.7.post0 ; sys_platform == "win32"
 curl_cffi>=0.9.0
 beautifulsoup4>=4.12.0
+send2trash>=1.8.0
 
 # --- dev only ---
 pytest>=8.0.0

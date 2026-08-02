@@ -145,3 +145,28 @@ def find_ffmpeg() -> Optional[str]:
 def find_ffprobe() -> Optional[str]:
     """Ritorna il path completo di ffprobe."""
     return _find_binary("ffprobe")
+
+
+def find_fpcalc() -> Optional[str]:
+    """Ritorna il path completo di fpcalc (Chromaprint), o None.
+
+    Cerca nelle stesse directory di find_ffmpeg / find_ytdlp: bundle
+    PyInstaller prima, poi percorsi noti (Homebrew su macOS, LOCALAPPDATA
+    su Windows), infine PATH generico. In dev mode aggiunge anche
+    `<project_root>/bundle_bin/` così l'app funziona con `python main.py`
+    dopo aver scaricato fpcalc via build script.
+
+    `fpcalc` viene usato dal modulo core.dedup per calcolare fingerprint
+    audio (identificazione di duplicati).
+    """
+    found = _find_binary("fpcalc")
+    if found:
+        return found
+    # Fallback dev: bundle_bin del progetto
+    if not _is_frozen():
+        exe_name = _exe("fpcalc")
+        project_bundle = Path(__file__).resolve().parent.parent / "bundle_bin"
+        cand = project_bundle / exe_name
+        if cand.exists():
+            return str(cand)
+    return None

@@ -31,6 +31,8 @@ BUNDLE_DIR = ROOT / "bundle_bin"
 
 YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
 FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+FPCALC_URL = ("https://github.com/acoustid/chromaprint/releases/download/"
+              "v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip")
 
 
 def log(msg):
@@ -84,6 +86,33 @@ def download_ffmpeg():
 
     if not ffmpeg_exe.exists():
         print("ERRORE: ffmpeg.exe non trovato nello zip!")
+        sys.exit(1)
+
+
+# =========================================================================
+# 2b. Scarica fpcalc.exe (Chromaprint) — usato dal tab Dedup
+# =========================================================================
+def download_fpcalc():
+    dest = BUNDLE_DIR / "fpcalc.exe"
+    if dest.exists():
+        log("fpcalc.exe gia presente")
+        return
+
+    log(f"Scarico fpcalc.exe ...")
+    BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
+
+    response = urllib.request.urlopen(FPCALC_URL)
+    zip_data = io.BytesIO(response.read())
+    with zipfile.ZipFile(zip_data) as zf:
+        for member in zf.namelist():
+            basename = Path(member).name
+            if basename == "fpcalc.exe":
+                data = zf.read(member)
+                dest.write_bytes(data)
+                log(f"  Estratto: fpcalc.exe ({len(data) // 1024} KB)")
+
+    if not dest.exists():
+        print("ERRORE: fpcalc.exe non trovato nello zip!")
         sys.exit(1)
 
 
@@ -187,6 +216,7 @@ def main():
 
     download_ytdlp()
     download_ffmpeg()
+    download_fpcalc()
     run_pyinstaller()
 
     print("\n" + "=" * 50)

@@ -65,6 +65,48 @@ def download_ytdlp():
 
 
 # =========================================================================
+# 1b. Scarica fpcalc (Chromaprint) — usato dal tab Dedup
+# =========================================================================
+def download_fpcalc():
+    """Scarica il binario universal Chromaprint fpcalc per macOS."""
+    dest = BUNDLE_DIR / "fpcalc"
+    if dest.exists():
+        log(f"fpcalc gia presente: {dest}")
+        return dest
+
+    url = ("https://github.com/acoustid/chromaprint/releases/download/"
+           "v1.5.1/chromaprint-fpcalc-1.5.1-macos-universal.tar.gz")
+    log(f"Scarico fpcalc da {url} ...")
+    BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
+
+    tmp_tar = BUNDLE_DIR / "_fpcalc.tar.gz"
+    subprocess.run(["curl", "-L", "-o", str(tmp_tar), url], check=True)
+    # Estrae ovunque nella cartella, poi trova fpcalc e lo sposta al posto
+    tmp_extract = BUNDLE_DIR / "_fpcalc_extract"
+    if tmp_extract.exists():
+        shutil.rmtree(tmp_extract)
+    tmp_extract.mkdir()
+    subprocess.run(["tar", "-xzf", str(tmp_tar), "-C", str(tmp_extract)],
+                   check=True)
+    # Trova fpcalc nel folder estratto
+    found = None
+    for p in tmp_extract.rglob("fpcalc"):
+        if p.is_file():
+            found = p
+            break
+    if not found:
+        shutil.rmtree(tmp_extract, ignore_errors=True)
+        tmp_tar.unlink(missing_ok=True)
+        raise RuntimeError("fpcalc non trovato nell'archivio")
+    shutil.copy2(found, dest)
+    dest.chmod(dest.stat().st_mode | stat.S_IEXEC)
+    shutil.rmtree(tmp_extract, ignore_errors=True)
+    tmp_tar.unlink(missing_ok=True)
+    log(f"fpcalc scaricato: {dest}")
+    return dest
+
+
+# =========================================================================
 # 2. Raccogli ffmpeg/ffprobe + dylib
 # =========================================================================
 def find_brew_binary(name):
@@ -511,6 +553,7 @@ def main():
         shutil.rmtree(BUNDLE_DIR)
 
     download_ytdlp()
+    download_fpcalc()
     bundle_ffmpeg()
     run_pyinstaller()
 
