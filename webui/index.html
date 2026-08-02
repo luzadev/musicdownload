@@ -49,6 +49,10 @@
           <span class="nav-icon">🔄</span>
           <span>Converti</span>
         </button>
+        <button class="nav-item" data-view="dedup" data-feature="audio">
+          <span class="nav-icon">🗑</span>
+          <span>Dedup</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -1203,6 +1207,70 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="convert-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: DEDUP (audio duplicati via Chromaprint) ===== -->
+      <section class="view" id="view-dedup">
+        <header class="hero hero-red">
+          <div class="hero-content">
+            <div class="hero-eyebrow red">DEDUP AUDIO</div>
+            <h1 class="hero-title">Trova e rimuovi duplicati audio</h1>
+            <p class="hero-subtitle">Audio fingerprinting via Chromaprint: riconosce brani identici indipendentemente dal bitrate, dal formato o dai tag.</p>
+          </div>
+          <div class="hero-deco">🗑</div>
+        </header>
+
+        <h2 class="section-label">Cartella</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <button id="dedup-pick-folder" class="btn btn-primary pill">📁 Scegli cartella</button>
+            <button id="dedup-start-btn" class="btn btn-primary pill" disabled>
+              <span class="ico">▶</span> Scansiona
+            </button>
+            <button id="dedup-stop-btn" class="btn btn-danger pill" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <span id="dedup-path-display" class="beatport-output-info" style="margin:0;">Nessuna cartella selezionata</span>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="checkbox" id="dedup-recursive" checked />
+              <span>Ricerca ricorsiva (include sottocartelle)</span>
+            </label>
+          </div>
+          <div id="dedup-status" class="beatport-status"></div>
+        </div>
+
+        <h2 class="section-label">Progresso</h2>
+        <div class="card">
+          <div class="progress">
+            <div class="progress-bar"><div id="dedupProgressFill" class="progress-fill pink"></div></div>
+            <div class="progress-meta">
+              <span id="dedupPercent" class="percent pink">0%</span>
+              <span id="dedupCounter">In attesa</span>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Risultati</h2>
+        <div class="card" id="dedup-summary-card" hidden>
+          <div class="dedup-summary" id="dedup-summary-line"></div>
+        </div>
+        <div id="dedup-groups-wrap"></div>
+
+        <div class="dedup-footer-bar" id="dedup-footer-bar" hidden>
+          <span class="counter" id="dedup-selected-count">0 file da cancellare</span>
+          <button id="dedup-trash-btn" class="btn btn-danger pill" disabled>
+            <span class="ico">🗑</span> Sposta in cestino
+          </button>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="dedup-log"></div>
         </div>
       </section>
 
