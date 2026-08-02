@@ -272,6 +272,19 @@
             <label class="field-label">Soglia HQ (kbps)</label>
             <input type="number" id="upThreshold" class="input pill input-sm" value="310" />
           </div>
+
+          <div class="field">
+            <label class="field-label">Cartella archivio (opzionale)</label>
+            <div class="row">
+              <div class="path-display empty" id="upArchivePathDisplay">Nessuna cartella</div>
+              <button class="btn btn-ghost pill btn-sm" id="upArchiveBrowseBtn">📂 Sfoglia</button>
+              <button class="btn btn-ghost pill btn-sm" id="upArchiveClearBtn" hidden>Rimuovi</button>
+            </div>
+            <div class="hint">
+              <span class="hint-ico">ⓘ</span>
+              <div>Se selezionata, l'app cerca versioni HQ del brano nella tua libreria locale prima di scaricare da YouTube. In caso di match multipli scegli tu quale usare.</div>
+            </div>
+          </div>
         </div>
 
         <div class="card actions">
@@ -1258,6 +1271,25 @@
       <div class="modal-foot">
         <button class="btn btn-primary pill" id="upgradeOpenBtn">Vedi i piani</button>
         <button class="btn btn-ghost pill" id="upgradeCloseBtn2">Chiudi</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== MODAL: Match locale Upgrade ============== -->
+  <div class="modal-backdrop" id="upgradePickerModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Match locali trovati</h2>
+        <button class="modal-close" id="upgradePickerCloseBtn">×</button>
+      </div>
+      <div class="modal-body upgrade-picker-body">
+        <div class="modal-sub" id="upgradePickerFilename"></div>
+        <div id="upgradePickerList" class="upgrade-picker-list"></div>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-primary pill" id="upgradePickerUseBtn" disabled>Usa selezionato</button>
+        <button class="btn btn-ghost pill" id="upgradePickerYoutubeBtn">Cerca su YouTube</button>
+        <button class="btn btn-danger pill" id="upgradePickerSkipBtn">Salta</button>
       </div>
     </div>
   </div>
