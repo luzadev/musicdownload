@@ -1708,3 +1708,70 @@ input[type="number"]::-webkit-inner-spin-button {
   .hint-inline { margin-left: 0; }
   .beatport-table .col-state { width: 110px; }
 }
+
+/* ===============================
+   UPGRADE — picker modal (match locale)
+   =============================== */
+.modal-body.upgrade-picker-body {
+  /* Override del default .modal-body (mono + pre-wrap): qui è UI, non log */
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  white-space: normal;
+  user-select: none;
+}
+.modal-sub {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-bottom: 12px;
+  word-break: break-word;
+}
+.upgrade-picker-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 380px;
+  overflow-y: auto;
+}
+.upgrade-picker-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md, 10px);
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  background: var(--bg-input, transparent);
+}
+.upgrade-picker-row:hover { border-color: var(--text-2); }
+.upgrade-picker-row.selected {
+  border-color: var(--blue, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
+}
+.upgrade-picker-row input[type="radio"] {
+  margin-top: 3px;
+  cursor: pointer;
+}
+.upgrade-picker-info {
+  flex: 1;
+  min-width: 0;
+}
+.upgrade-picker-title {
+  font-weight: 600;
+  color: var(--text);
+  word-break: break-word;
+}
+.upgrade-picker-meta {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: 3px;
+  font-variant-numeric: tabular-nums;
+}
+.upgrade-picker-path {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-top: 2px;
+  word-break: break-all;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+}

@@ -12,6 +12,8 @@ const state = {
   loaded: null,  // { kind: "urls"|"tracks", urls?, tracks?, count }
   dlOutputDir: "",
   upDir: "",
+  upArchiveDir: "",
+  upPicker: { file: "", candidates: [], selectedIdx: -1 },
   videoOutputDir: "",
   showSecret: false,
   downloading: false,
@@ -310,7 +312,12 @@ const bridgeHandlers = {
     state.upgrading = false;
     $("#upgradeBtn").disabled = false;
     $("#stopUpgradeBtn").disabled = true;
+    // Chiudi eventuale modal picker rimasto aperto
+    const modal = $("#upgradePickerModal");
+    if (modal && !modal.hidden) modal.hidden = true;
   },
+
+  "upgrade:candidates_needed": (p) => openUpgradePicker(p),
 
   "video:progress": (p) => {
     if (typeof p.overall === "number") {
@@ -714,6 +721,26 @@ $("#upBrowseBtn").addEventListener("click", async () => {
 
 $("#upRecursive").addEventListener("change", refreshUpgradeScan);
 
+// --- Cartella archivio (opzionale) ---
+$("#upArchiveBrowseBtn").addEventListener("click", async () => {
+  const path = await window.pywebview.api.browse_directory();
+  if (path) {
+    state.upArchiveDir = path;
+    const disp = $("#upArchivePathDisplay");
+    disp.textContent = path;
+    disp.classList.remove("empty");
+    $("#upArchiveClearBtn").hidden = false;
+  }
+});
+
+$("#upArchiveClearBtn").addEventListener("click", () => {
+  state.upArchiveDir = "";
+  const disp = $("#upArchivePathDisplay");
+  disp.textContent = "Nessuna cartella";
+  disp.classList.add("empty");
+  $("#upArchiveClearBtn").hidden = true;
+});
+
 async function refreshUpgradeScan() {
   if (!state.upDir) return;
   const res = await window.pywebview.api.scan_audio_folder(state.upDir, $("#upRecursive").checked);
@@ -748,6 +775,7 @@ $("#upgradeBtn").addEventListener("click", async () => {
     directory: state.upDir,
     recursive: $("#upRecursive").checked,
     threshold: parseInt($("#upThreshold").value, 10) || 310,
+    archive_dir: state.upArchiveDir || "",
   });
   if (!res.ok) {
     if (!handleGateBlock(res)) toast(res.error || "Errore", "error");
@@ -758,6 +786,109 @@ $("#upgradeBtn").addEventListener("click", async () => {
 $("#stopUpgradeBtn").addEventListener("click", async () => {
   await window.pywebview.api.stop_upgrade();
   $("#stopUpgradeBtn").disabled = true;
+});
+
+// --- Modal picker "Match locali multipli" ---
+function _fmtBytes(n) {
+  if (!n || n < 0) return "—";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
+  if (n < 1024 * 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  return (n / (1024 * 1024 * 1024)).toFixed(2) + " GB";
+}
+
+function _basename(p) {
+  if (!p) return "";
+  const parts = String(p).split(/[/\\]/);
+  return parts[parts.length - 1] || p;
+}
+
+function _escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"
+  }[c]));
+}
+
+function openUpgradePicker(payload) {
+  const modal = $("#upgradePickerModal");
+  if (!modal) return;
+  const file = (payload && payload.file) || "";
+  const candidates = (payload && payload.candidates) || [];
+  state.upPicker = { file, candidates, selectedIdx: -1 };
+
+  $("#upgradePickerFilename").textContent = "Brano: " + file;
+  const list = $("#upgradePickerList");
+  list.innerHTML = "";
+  candidates.forEach((c, i) => {
+    const row = document.createElement("label");
+    row.className = "upgrade-picker-row";
+    row.dataset.idx = String(i);
+    const simPct = Math.round((c.similarity || 0) * 100);
+    const kbps = c.bitrate ? `${c.bitrate}k` : "—";
+    row.innerHTML = `
+      <input type="radio" name="upgradePickerRadio" value="${i}" />
+      <div class="upgrade-picker-info">
+        <div class="upgrade-picker-title">${_escapeHtml(_basename(c.path))}</div>
+        <div class="upgrade-picker-meta">${_escapeHtml(kbps)} · ${_escapeHtml(_fmtBytes(c.size))} · similarity ${simPct}%</div>
+        <div class="upgrade-picker-path">${_escapeHtml(c.path || "")}</div>
+      </div>
+    `;
+    row.addEventListener("click", () => {
+      state.upPicker.selectedIdx = i;
+      $("#upgradePickerUseBtn").disabled = false;
+      $$("#upgradePickerList .upgrade-picker-row").forEach((r) =>
+        r.classList.toggle("selected", r === row)
+      );
+      const radio = row.querySelector("input[type=radio]");
+      if (radio) radio.checked = true;
+    });
+    list.appendChild(row);
+  });
+  $("#upgradePickerUseBtn").disabled = true;
+  modal.hidden = false;
+}
+
+function closeUpgradePicker() {
+  const modal = $("#upgradePickerModal");
+  if (modal) modal.hidden = true;
+}
+
+async function _sendUpgradeChoice(choice) {
+  try {
+    await window.pywebview.api.upgrade_resolve_candidates(choice);
+  } catch (_e) { /* backend può essere già terminato: ignora */ }
+  closeUpgradePicker();
+}
+
+$("#upgradePickerUseBtn")?.addEventListener("click", () => {
+  const idx = state.upPicker.selectedIdx;
+  if (idx < 0 || idx >= state.upPicker.candidates.length) return;
+  const path = state.upPicker.candidates[idx].path;
+  _sendUpgradeChoice({ action: "use_local", path });
+});
+
+$("#upgradePickerYoutubeBtn")?.addEventListener("click", () => {
+  _sendUpgradeChoice({ action: "use_youtube" });
+});
+
+$("#upgradePickerSkipBtn")?.addEventListener("click", () => {
+  _sendUpgradeChoice({ action: "skip" });
+});
+
+$("#upgradePickerCloseBtn")?.addEventListener("click", () => {
+  _sendUpgradeChoice({ action: "skip" });
+});
+
+$("#upgradePickerModal")?.addEventListener("click", (e) => {
+  // Click sul backdrop (non sulla card) → skip
+  if (e.target === e.currentTarget) _sendUpgradeChoice({ action: "skip" });
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    const modal = $("#upgradePickerModal");
+    if (modal && !modal.hidden) _sendUpgradeChoice({ action: "skip" });
+  }
 });
 
 // ============================================================
