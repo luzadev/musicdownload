@@ -13,6 +13,10 @@ from core.paths import find_ytdlp, find_ffmpeg_dir, find_ffprobe, subprocess_fla
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac"}
 
+# Timeout massimo per singolo download yt-dlp (secondi). Watchdog kill.
+# Serve a evitare hang su video geo-restricted, YouTube throttle o rete lenta.
+_DOWNLOAD_TIMEOUT_SEC = 300
+
 # Flag globale per interruzione
 _stop_event = threading.Event()
 _current_process: Optional[subprocess.Popen] = None
@@ -288,17 +292,43 @@ def upgrade_folder(
                     cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
                     **subprocess_flags(),
                 )
+            proc = _current_process
 
-            for line in _current_process.stdout:
-                if is_stopped():
-                    _current_process.terminate()
-                    return
-                pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
-                if pct_match and progress_callback:
-                    pct = int(float(pct_match.group(1)))
-                    progress_callback(processed, total, filepath.name, "downloading", current_kbps, pct)
+            # Watchdog: kill del subprocess se supera _DOWNLOAD_TIMEOUT_SEC.
+            # Previene hang indefinito su video problematici (geo-block,
+            # YouTube throttle, rete lenta). Alla scadenza il process viene
+            # terminato -> for line esce -> code path "download_error" naturale.
+            def _watchdog_kill():
+                try:
+                    if proc.poll() is None:
+                        proc.terminate()
+                except Exception:
+                    pass
+            watchdog = threading.Timer(_DOWNLOAD_TIMEOUT_SEC, _watchdog_kill)
+            watchdog.daemon = True
+            watchdog.start()
 
-            _current_process.wait()
+            try:
+                for line in proc.stdout:
+                    if is_stopped():
+                        proc.terminate()
+                        return
+                    pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
+                    if pct_match and progress_callback:
+                        pct = int(float(pct_match.group(1)))
+                        progress_callback(processed, total, filepath.name, "downloading", current_kbps, pct)
+
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    try:
+                        proc.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        pass
+            finally:
+                watchdog.cancel()
+
             with _process_lock:
                 _current_process = None
 
