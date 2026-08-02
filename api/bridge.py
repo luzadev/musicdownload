@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue
 import re
 import threading
 import time
@@ -110,6 +111,9 @@ class Api:
         self._download_thread: Optional[threading.Thread] = None
         self._upgrade_thread: Optional[threading.Thread] = None
         self._video_thread: Optional[threading.Thread] = None
+        # Coda usata dal resolve_callback per attendere la scelta utente
+        # sul modal "match locali multipli" della tab Upgrade.
+        self._upgrade_resolve_q: "queue.Queue[dict]" = queue.Queue(1)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -882,6 +886,7 @@ class Api:
             return {"ok": False, "error": "Upgrade gia in corso"}
 
         directory = (payload.get("directory") or "").strip()
+        archive_dir = (payload.get("archive_dir") or "").strip() or None
         recursive = bool(payload.get("recursive", False))
         try:
             threshold = int(payload.get("threshold", 310))
@@ -898,9 +903,16 @@ class Api:
         cfg = load_config()
         cookies_path = cfg.get("cookies_path", "")
 
+        # Drain la queue di risoluzione da eventuali run precedenti (safety)
+        try:
+            while True:
+                self._upgrade_resolve_q.get_nowait()
+        except queue.Empty:
+            pass
+
         self._upgrade_thread = threading.Thread(
             target=self._upgrade_worker,
-            args=(directory, threshold, cookies_path, recursive),
+            args=(directory, threshold, cookies_path, recursive, archive_dir),
             daemon=True,
         )
         self._upgrade_thread.start()
@@ -908,10 +920,36 @@ class Api:
 
     def stop_upgrade(self) -> dict:
         request_upgrade_stop()
+        # Sblocca eventuale resolve_callback in attesa: inviamo scelta 'skip'
+        # cosi il worker esce pulito invece di restare bloccato in q.get().
+        try:
+            self._upgrade_resolve_q.put_nowait({"action": "skip"})
+        except queue.Full:
+            pass
         self._log("upgrade", "[INFO] Interruzione richiesta...")
         return {"ok": True}
 
-    def _upgrade_worker(self, directory, threshold, cookies_path, recursive):
+    def upgrade_resolve_candidates(self, choice: dict) -> dict:
+        """Riceve la scelta utente dal modal 'match locali multipli' e la
+        deposita nella queue attesa dal resolve_callback del worker.
+
+        `choice`: {'action': 'use_local'|'use_youtube'|'skip', 'path': str?}
+        """
+        if not isinstance(choice, dict):
+            choice = {"action": "skip"}
+        try:
+            # Drain (nel caso rarissimo di doppio put) e poi metti la nuova
+            try:
+                self._upgrade_resolve_q.get_nowait()
+            except queue.Empty:
+                pass
+            self._upgrade_resolve_q.put_nowait(choice)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def _upgrade_worker(self, directory, threshold, cookies_path, recursive,
+                         archive_dir: Optional[str] = None):
         view = "upgrade"
 
         def progress_cb(idx, total, filename, status, old_kbps, new_kbps):
@@ -938,6 +976,19 @@ class Api:
                 diff = new_kbps - old_kbps
                 diff_str = f" (+{diff}kbps)" if diff > 0 else ""
                 self._log(view, f"[UPGRADE] {filename}: {old_kbps} -> {new_kbps}kbps{diff_str}")
+            elif status == "local_copy":
+                self._log(view, f"[LOCALE] {filename}: uso match dall'archivio")
+            elif status == "local_upgraded":
+                diff = new_kbps - old_kbps
+                diff_str = f" (+{diff}kbps)" if diff > 0 else ""
+                self._log(view, f"[LOCALE OK] {filename}: {old_kbps} -> {new_kbps}kbps{diff_str}")
+            elif status == "skipped_by_user":
+                self._log(view, f"[SKIP] {filename} (saltato manualmente)")
+            elif status == "resolve_wait":
+                self._log(view, f"[SCELTA] {filename}: match multipli, in attesa scelta utente")
+            elif status == "scan_archive":
+                # `new_kbps` in questo caso trasporta il count delle chiavi
+                self._log(view, f"[ARCHIVIO] Indicizzati {new_kbps} gruppi audio")
             elif status == "download_error":
                 self._log(view, f"[ERRORE] {filename}: download fallito")
             elif status == "stopped":
@@ -948,7 +999,24 @@ class Api:
 
             self._emit("upgrade:progress", payload_evt)
 
-        upgrade_folder(directory, threshold, cookies_path, recursive, progress_cb)
+        def resolve_cb(filename: str, candidates: list) -> dict:
+            """Bloccante: emette evento e attende scelta utente via queue."""
+            self._emit("upgrade:candidates_needed", {
+                "file": filename,
+                "candidates": candidates,
+            })
+            try:
+                # Timeout 10 min — se l'utente sparisce, salta il brano
+                choice = self._upgrade_resolve_q.get(timeout=600)
+            except queue.Empty:
+                choice = {"action": "skip"}
+            return choice
+
+        upgrade_folder(
+            directory, threshold, cookies_path, recursive, progress_cb,
+            archive_dir=archive_dir,
+            resolve_callback=resolve_cb,
+        )
         self._emit("upgrade:done", {"ok": True})
 
     # ------------------------------------------------------------------
