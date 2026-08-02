@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.9.5"
+VERSION = "v1.10.0"
 
 
 APP_NAME = "MusicTools"
@@ -78,6 +78,9 @@ DEFAULTS = {
     "spotify_search_last_query": "",
     "spotify_search_artist_mode": False,
     "youtube_search_last_query": "",
+    # ---- Dedup (audio duplicati via Chromaprint) ----
+    "dedup_last_folder": "",
+    "dedup_recursive": True,
     # ---- Licenza ----
     "license_key": "",          # chiave fornita all'utente via email
     "license_email": "",        # email associata all'acquisto

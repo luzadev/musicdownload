@@ -46,6 +46,7 @@ from core.upgrader import (
     request_stop as request_upgrade_stop,
     count_files_info,
 )
+from core import dedup
 
 
 SPOTIFY_GUIDE_TEXT = """\
@@ -111,6 +112,7 @@ class Api:
         self._download_thread: Optional[threading.Thread] = None
         self._upgrade_thread: Optional[threading.Thread] = None
         self._video_thread: Optional[threading.Thread] = None
+        self._dedup_thread: Optional[threading.Thread] = None
         # Coda usata dal resolve_callback per attendere la scelta utente
         # sul modal "match locali multipli" della tab Upgrade.
         self._upgrade_resolve_q: "queue.Queue[dict]" = queue.Queue(1)
@@ -1820,3 +1822,125 @@ class Api:
                 })
 
         self._emit("convert:done", {"ok": True})
+
+    # ================================================================
+    # DEDUP — audio duplicati via Chromaprint fingerprinting
+    # ================================================================
+    def dedup_pick_folder(self) -> str:
+        """Folder picker per la cartella da scansionare."""
+        return self.browse_directory()
+
+    def dedup_start_scan(self, payload: dict) -> dict:
+        """Avvia worker di scansione. Payload: {directory, recursive}.
+
+        Salva `dedup_last_folder` e `dedup_recursive` in config per la
+        prossima apertura del tab.
+        """
+        if self._dedup_thread and self._dedup_thread.is_alive():
+            return {"ok": False, "error": "Scansione dedup gia in corso"}
+
+        directory = (payload.get("directory") or "").strip()
+        recursive = bool(payload.get("recursive", True))
+
+        if not directory:
+            return {"ok": False, "error": "Cartella non impostata"}
+        if not os.path.isdir(directory):
+            return {"ok": False, "error": "Cartella non trovata"}
+
+        # Persist last folder/recursive
+        try:
+            cfg = load_config()
+            cfg["dedup_last_folder"] = directory
+            cfg["dedup_recursive"] = recursive
+            save_config(cfg)
+        except Exception:
+            pass
+
+        self._dedup_thread = threading.Thread(
+            target=self._dedup_worker,
+            args=(directory, recursive),
+            daemon=True,
+        )
+        self._dedup_thread.start()
+        return {"ok": True}
+
+    def dedup_stop_scan(self) -> dict:
+        dedup.request_stop()
+        self._log("dedup", "[INFO] Interruzione richiesta...")
+        return {"ok": True}
+
+    def dedup_move_to_trash(self, paths: list) -> dict:
+        """Sposta i file in cestino via send2trash. Non consuma quota."""
+        if not isinstance(paths, list):
+            return {"ok": False, "error": "paths deve essere una lista"}
+        # Sanitize: solo str non vuote
+        clean = [str(p).strip() for p in paths if p and str(p).strip()]
+        if not clean:
+            return {"ok": False, "error": "Nessun file da cancellare"}
+
+        result = dedup.move_to_trash(clean)
+        moved_n = len(result.get("moved", []))
+        failed_n = len(result.get("failed", []))
+        if moved_n:
+            self._log("dedup", f"[OK] {moved_n} file spostati nel cestino")
+        for f in result.get("failed", []):
+            self._log("dedup",
+                      f"[ERRORE] {f.get('path')}: {f.get('error')}")
+        return {"ok": True, "moved": result.get("moved", []),
+                "failed": result.get("failed", []),
+                "moved_count": moved_n, "failed_count": failed_n}
+
+    def _dedup_worker(self, directory: str, recursive: bool) -> None:
+        """Esegue la scansione in background e emette progress/done."""
+        view = "dedup"
+        dedup.reset_stop()
+        self._log(view, f"[INFO] Scansione: {directory} (recursive={recursive})")
+
+        _last = [0.0]
+        _THROTTLE = 0.05
+
+        def progress_cb(idx: int, total: int, filename: str, status: str) -> None:
+            # Throttle solo eventi 'computing'/'cached' (che possono essere migliaia)
+            if status in ("computing", "cached"):
+                now = time.monotonic()
+                if now - _last[0] < _THROTTLE and idx != total:
+                    return
+                _last[0] = now
+            payload_evt = {
+                "idx": idx, "total": total,
+                "filename": filename, "status": status,
+            }
+            if total > 0:
+                payload_evt["overall"] = min(idx / total, 1.0)
+            if status == "completed":
+                payload_evt["overall"] = 1.0
+                self._log(view, f"[INFO] Scansione completata ({total} file).")
+            elif status == "stopped":
+                self._log(view, "[INFO] Scansione interrotta.")
+            elif status == "error" and filename:
+                self._log(view, f"[ERRORE] {filename}: errore lettura")
+            self._emit("dedup:progress", payload_evt)
+
+        try:
+            groups = dedup.scan_folder(directory, recursive=recursive,
+                                       progress_callback=progress_cb)
+        except Exception as e:
+            self._log(view, f"[ERRORE] {e}")
+            self._emit("dedup:done", {"ok": False, "error": str(e),
+                                       "groups": []})
+            return
+
+        n_groups = len(groups)
+        n_dupes = sum(max(0, len(g) - 1) for g in groups)
+        total_bytes = sum(sum(int(e.get("size") or 0) for e in g[1:])
+                          for g in groups)
+        self._log(view,
+                  f"[INFO] Gruppi: {n_groups} — duplicati: {n_dupes} — "
+                  f"spazio recuperabile: ~{total_bytes // 1024 // 1024} MB")
+        self._emit("dedup:done", {
+            "ok": True,
+            "groups": groups,
+            "n_groups": n_groups,
+            "n_dupes": n_dupes,
+            "reclaimable_bytes": total_bytes,
+        })
