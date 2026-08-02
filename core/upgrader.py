@@ -5,14 +5,21 @@ from __future__ import annotations
 import json
 import queue
 import re
+import shutil
 import subprocess
 import threading
 from pathlib import Path
 from typing import Callable, Optional
 
-from core.paths import find_ytdlp, find_ffmpeg_dir, find_ffprobe, subprocess_flags
+from core.paths import find_ytdlp, find_ffmpeg_dir, find_ffmpeg, find_ffprobe, subprocess_flags
 
 AUDIO_EXTENSIONS = {".mp3", ".m4a", ".wav", ".flac"}
+
+# Soglia minima Jaccard per considerare un file dell'archivio come candidato.
+_ARCHIVE_MIN_SIMILARITY = 0.5
+
+# Token di lunghezza inferiore a questa vengono scartati (troppo generici).
+_MIN_TOKEN_LEN = 3
 
 # Timeout massimo per singolo download yt-dlp (secondi). Watchdog kill.
 # Serve a evitare hang su video geo-restricted, YouTube throttle o rete lenta.
@@ -73,6 +80,140 @@ def get_bitrate(filepath: str | Path) -> int:
         return bit_rate // 1000
     except Exception:
         return 0
+
+
+def _normalize_stem(stem: str) -> set:
+    """Ritorna il set di token normalizzati per un nome file (senza extension).
+
+    Pipeline:
+      1. Lowercase
+      2. Sostituisce caratteri non alfanumerici con spazi (mantiene split naturale)
+      3. Split su whitespace
+      4. Filtra token di lunghezza < _MIN_TOKEN_LEN (troppo generici)
+    """
+    if not stem:
+        return set()
+    lowered = stem.lower()
+    # Manteniamo spazi ma sostituiamo tutto il resto (che non è alfanumerico) con spazi
+    cleaned = re.sub(r"[^a-z0-9\s]+", " ", lowered)
+    tokens = cleaned.split()
+    return {t for t in tokens if len(t) >= _MIN_TOKEN_LEN}
+
+
+def _tokens_to_key(tokens: set) -> str:
+    """Chiave stabile per un set di token (usata come chiave del dict d'indice)."""
+    return "|".join(sorted(tokens))
+
+
+def _key_to_tokens(key: str) -> set:
+    """Inverso di _tokens_to_key."""
+    if not key:
+        return set()
+    return set(key.split("|"))
+
+
+def _scan_archive(archive_dir: str) -> dict:
+    """Indicizza recursivamente un archivio di file audio.
+
+    Ritorna dict {token_key: [Path, ...]}. La scansione è case-insensitive
+    sulle estensioni: `.MP3`, `.Mp3`, `.mp3` sono tutti riconosciuti.
+    """
+    base = Path(archive_dir)
+    index: dict = {}
+    if not base.exists() or not base.is_dir():
+        return index
+    for f in base.rglob("*"):
+        if not f.is_file():
+            continue
+        if f.suffix.lower() not in AUDIO_EXTENSIONS:
+            continue
+        tokens = _normalize_stem(f.stem)
+        if not tokens:
+            continue
+        key = _tokens_to_key(tokens)
+        index.setdefault(key, []).append(f)
+    return index
+
+
+def _find_candidates(
+    target_stem: str,
+    index: dict,
+    min_similarity: float = _ARCHIVE_MIN_SIMILARITY,
+) -> list:
+    """Cerca candidati nell'indice tramite Jaccard sui token del nome.
+
+    Ritorna lista di tuple `(path, similarity, bitrate)` ordinata per
+    bitrate DESC, poi similarity DESC.
+    """
+    target_tokens = _normalize_stem(target_stem)
+    if not target_tokens:
+        return []
+
+    results: list = []
+    for key, paths in index.items():
+        entry_tokens = _key_to_tokens(key)
+        if not entry_tokens:
+            continue
+        common = len(target_tokens & entry_tokens)
+        if common == 0:
+            continue
+        total = len(target_tokens | entry_tokens)
+        if total == 0:
+            continue
+        sim = common / total
+        if sim < min_similarity:
+            continue
+        for p in paths:
+            try:
+                br = get_bitrate(p)
+            except Exception:
+                br = 0
+            results.append((p, sim, br))
+
+    # Ordina: bitrate DESC, poi similarity DESC (stabile)
+    results.sort(key=lambda t: (-t[2], -t[1]))
+    return results
+
+
+def _copy_or_convert_to_mp3(
+    src: Path,
+    dst: Path,
+    temp_dir: Path,
+) -> bool:
+    """Copia (o converte se necessario) `src` in `dst` come MP3.
+
+    - Se src è già .mp3 → copia diretta con shutil.copy2
+    - Altrimenti → converti con ffmpeg a 320k CBR
+    Ritorna True in caso di successo.
+    """
+    try:
+        if src.suffix.lower() == ".mp3":
+            shutil.copy2(str(src), str(dst))
+            return dst.exists()
+        # Convert non-mp3 -> mp3 320k
+        ffmpeg_bin = find_ffmpeg() or "ffmpeg"
+        temp_out = temp_dir / f"_archive_convert_{dst.stem}.mp3"
+        # -y per sovrascrivere se residuo di run precedente
+        subprocess.run(
+            [
+                ffmpeg_bin, "-y",
+                "-i", str(src),
+                "-vn",  # scarta eventuali stream video/cover art (le riproviamo dopo)
+                "-c:a", "libmp3lame",
+                "-b:a", "320k",
+                "-id3v2_version", "3",
+                str(temp_out),
+            ],
+            capture_output=True,
+            timeout=300,
+            **subprocess_flags(),
+        )
+        if not temp_out.exists():
+            return False
+        temp_out.replace(dst)
+        return True
+    except Exception:
+        return False
 
 
 def _load_done_set(done_file: Path) -> set[str]:
@@ -185,8 +326,21 @@ def upgrade_folder(
     cookies_path: Optional[str] = None,
     recursive: bool = False,
     progress_callback: Optional[Callable] = None,
+    archive_dir: Optional[str] = None,
+    resolve_callback: Optional[Callable] = None,
 ) -> None:
-    """Logica principale di upgrade qualita."""
+    """Logica principale di upgrade qualita.
+
+    Args:
+        archive_dir: se presente, prima di scaricare da YouTube l'app cerca
+            una versione HQ del brano in questa cartella (recursive). Se ne
+            trova una la copia (o converte in mp3 320k) mantenendo il nome
+            originale.
+        resolve_callback: chiamato in caso di match multiplo nell'archivio.
+            Riceve una lista di dict {path, bitrate, size, similarity} e deve
+            ritornare bloccante un dict {'action': 'use_local'|'use_youtube'|
+            'skip', 'path': Optional[str]}.
+    """
     reset_stop()
     ytdlp = find_ytdlp()
 
@@ -200,7 +354,7 @@ def upgrade_folder(
     else:
         folders = [Path(directory)]
 
-    all_items: list[tuple[Path, Path]] = []
+    all_items: list = []
     for folder in folders:
         for ext in AUDIO_EXTENSIONS:
             for f in sorted(folder.glob(f"*{ext}")):
@@ -211,6 +365,16 @@ def upgrade_folder(
         if progress_callback:
             progress_callback(0, 0, "", "no_files", 0, 0)
         return
+
+    # Pre-scan dell'archivio (una volta sola). Se archive_dir è None si salta.
+    archive_index: dict = {}
+    if archive_dir:
+        try:
+            archive_index = _scan_archive(archive_dir)
+        except Exception:
+            archive_index = {}
+        if progress_callback:
+            progress_callback(0, total, "", "scan_archive", 0, len(archive_index))
 
     processed = 0
 
@@ -235,6 +399,95 @@ def upgrade_folder(
 
         current_kbps = get_bitrate(filepath)
 
+        # ------------------------------------------------------------------
+        # 1) ARCHIVE LOOKUP (se archive_dir presente)
+        # ------------------------------------------------------------------
+        if archive_index:
+            try:
+                candidates = _find_candidates(filename, archive_index)
+            except Exception:
+                candidates = []
+
+            selected_path: Optional[Path] = None
+            user_chose_youtube = False
+            user_chose_skip = False
+
+            if len(candidates) == 1:
+                selected_path = candidates[0][0]
+            elif len(candidates) >= 2 and resolve_callback is not None:
+                cand_payload = []
+                for cp, csim, cbr in candidates:
+                    try:
+                        csize = cp.stat().st_size
+                    except Exception:
+                        csize = 0
+                    cand_payload.append({
+                        "path": str(cp),
+                        "bitrate": cbr,
+                        "size": csize,
+                        "similarity": csim,
+                    })
+                if progress_callback:
+                    progress_callback(processed, total, filepath.name,
+                                      "resolve_wait", current_kbps, 0)
+                try:
+                    choice = resolve_callback(filepath.name, cand_payload) or {}
+                except Exception:
+                    choice = {}
+                action = (choice.get("action") or "").strip()
+                if action == "use_local":
+                    chosen = (choice.get("path") or "").strip()
+                    if chosen:
+                        cp = Path(chosen)
+                        if cp.exists():
+                            selected_path = cp
+                elif action == "use_youtube":
+                    user_chose_youtube = True
+                elif action == "skip":
+                    user_chose_skip = True
+                else:
+                    # Risposta invalida: fallback su YouTube per non bloccare
+                    user_chose_youtube = True
+            # len(candidates) >= 2 senza callback: fallback YouTube
+            # len(candidates) == 0: fallback YouTube
+
+            if user_chose_skip:
+                _mark_done(done_file, filename)
+                processed += 1
+                if progress_callback:
+                    progress_callback(processed, total, filepath.name,
+                                      "skipped_by_user", current_kbps, 0)
+                continue
+
+            if selected_path is not None and not user_chose_youtube:
+                # Copia/converte il candidato locale come .mp3 con nome originale
+                dst = filepath.parent / f"{filename}.mp3"
+                if progress_callback:
+                    progress_callback(processed, total, filepath.name,
+                                      "local_copy", current_kbps, 0)
+                # Rimuovi originale solo se ha estensione diversa (altrimenti
+                # verrà sovrascritto dalla copia)
+                try:
+                    if filepath.exists() and filepath.resolve() != dst.resolve():
+                        filepath.unlink()
+                except Exception:
+                    pass
+                ok = _copy_or_convert_to_mp3(selected_path, dst, temp_dir)
+                if ok:
+                    new_kbps = get_bitrate(dst)
+                    _mark_done(done_file, filename)
+                    _cleanup_temp(temp_dir)
+                    processed += 1
+                    if progress_callback:
+                        progress_callback(processed, total, filepath.name,
+                                          "local_upgraded", current_kbps, new_kbps)
+                    continue
+                # Copia fallita: fallback YouTube (non marchiamo done)
+                _cleanup_temp(temp_dir)
+
+        # ------------------------------------------------------------------
+        # 2) YOUTUBE FALLBACK (comportamento originale)
+        # ------------------------------------------------------------------
         if progress_callback:
             progress_callback(processed, total, filepath.name, "searching", current_kbps, 0)
 
