@@ -564,6 +564,24 @@
           </div>
 
           <div class="field">
+            <label class="field-label">Cookies da browser (bypass 403 YouTube)</label>
+            <div class="row">
+              <select id="cookiesBrowserSelect" class="input pill" style="max-width:220px;">
+                <option value="">Nessuno</option>
+                <option value="chrome">Chrome</option>
+                <option value="safari">Safari</option>
+                <option value="firefox">Firefox</option>
+                <option value="edge">Edge</option>
+                <option value="brave">Brave</option>
+              </select>
+            </div>
+            <div class="hint">
+              <span class="hint-ico">ⓘ</span>
+              <div>Alcuni video YouTube (musica protetta, region-lock, età) danno HTTP 403 senza cookies autenticati. Selezionando un browser, l'app legge i cookies dal tuo profilo — richiede che tu sia loggato su YouTube in quel browser. Se hai anche cookies.txt sopra, ha priorità il file.</div>
+            </div>
+          </div>
+
+          <div class="field">
             <label class="field-label">Cartella output predefinita</label>
             <div class="row">
               <input type="text" id="outputInput" class="input pill" placeholder="MUSICA/" />

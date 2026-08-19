@@ -485,6 +485,7 @@ async function init() {
   $("#bitrateSelect").value = state.config.bitrate || "320K";
   $("#hqThresholdInput").value = state.config.hq_threshold || 310;
   $("#cookiesInput").value = state.config.cookies_path || "";
+  if ($("#cookiesBrowserSelect")) $("#cookiesBrowserSelect").value = state.config.cookies_browser || "";
   $("#outputInput").value = state.config.output_dir || "";
   $("#themeSelect").value = state.config.theme || "dark";
   applyTheme(state.config.theme);
@@ -1293,6 +1294,7 @@ $("#saveBtn").addEventListener("click", async () => {
     bitrate: $("#bitrateSelect").value,
     hq_threshold: parseInt($("#hqThresholdInput").value, 10) || 310,
     cookies_path: $("#cookiesInput").value,
+    cookies_browser: $("#cookiesBrowserSelect") ? $("#cookiesBrowserSelect").value : "",
     output_dir: $("#outputInput").value,
     theme: $("#themeSelect").value,
   };

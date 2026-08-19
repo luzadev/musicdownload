@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.10.0"
+VERSION = "v1.10.1"
 
 
 APP_NAME = "MusicTools"
@@ -68,6 +68,7 @@ DEFAULTS = {
     "bitrate": "320K",
     "hq_threshold": 310,
     "cookies_path": str(_project_dir / "cookies.txt"),
+    "cookies_browser": "",  # "" | chrome | safari | firefox | edge | brave
     "output_dir": str(_project_dir / "MUSICA"),
     "theme": "dark",
     # ---- Beatport ----

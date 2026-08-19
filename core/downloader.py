@@ -12,6 +12,29 @@ from typing import Callable, Optional
 from core.paths import find_ytdlp, find_ffmpeg_dir, subprocess_flags
 
 
+_ALLOWED_BROWSERS = {"chrome", "safari", "firefox", "edge", "brave", "chromium", "opera", "vivaldi"}
+
+
+def _cookie_args(cookies_path: Optional[str]) -> list:
+    """Ritorna gli argomenti yt-dlp per i cookies.
+
+    Priorità: file cookies_path se esiste → altrimenti --cookies-from-browser
+    <name> se `cookies_browser` è settato in config → altrimenti niente.
+    """
+    if cookies_path and Path(cookies_path).exists():
+        return ["--cookies", cookies_path]
+    # Fallback: legge il browser dalla config al volo (evita di cambiare
+    # firma di tutte le funzioni download_*)
+    try:
+        from core.config import load_config
+        browser = (load_config().get("cookies_browser") or "").strip().lower()
+    except Exception:
+        browser = ""
+    if browser in _ALLOWED_BROWSERS:
+        return ["--cookies-from-browser", browser]
+    return []
+
+
 # Flag globale per interruzione
 _stop_event = threading.Event()
 _current_process: Optional[subprocess.Popen] = None
@@ -99,8 +122,7 @@ def _search_youtube(query: str, cookies_path: Optional[str] = None) -> tuple[str
         "--no-warnings",
         "--flat-playlist",
     ]
-    if cookies_path and Path(cookies_path).exists():
-        cmd.extend(["--cookies", cookies_path])
+    cmd.extend(_cookie_args(cookies_path))
 
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, **subprocess_flags())
     if result.returncode != 0:
@@ -216,8 +238,7 @@ def download_playlist(
         ffmpeg_dir = find_ffmpeg_dir()
         if ffmpeg_dir:
             cmd.extend(["--ffmpeg-location", ffmpeg_dir])
-        if cookies_path and Path(cookies_path).exists():
-            cmd.extend(["--cookies", cookies_path])
+        cmd.extend(_cookie_args(cookies_path))
 
         try:
             with _process_lock:
@@ -300,8 +321,7 @@ def download_direct_url(
         "--no-warnings",
         url,
     ]
-    if cookies_path and Path(cookies_path).exists():
-        probe_cmd.extend(["--cookies", cookies_path])
+    probe_cmd.extend(_cookie_args(cookies_path))
 
     try:
         result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60, **subprocess_flags())
@@ -375,8 +395,7 @@ def download_direct_url(
         ffmpeg_dir = find_ffmpeg_dir()
         if ffmpeg_dir:
             cmd.extend(["--ffmpeg-location", ffmpeg_dir])
-        if cookies_path and Path(cookies_path).exists():
-            cmd.extend(["--cookies", cookies_path])
+        cmd.extend(_cookie_args(cookies_path))
 
         try:
             with _process_lock:
@@ -511,8 +530,7 @@ def download_urls(
         ffmpeg_dir = find_ffmpeg_dir()
         if ffmpeg_dir:
             cmd.extend(["--ffmpeg-location", ffmpeg_dir])
-        if cookies_path and Path(cookies_path).exists():
-            cmd.extend(["--cookies", cookies_path])
+        cmd.extend(_cookie_args(cookies_path))
 
         try:
             with _process_lock:
@@ -608,8 +626,7 @@ def download_video(
     probe_cmd = [
         ytdlp, "--dump-json", "--flat-playlist", "--no-download", "--no-warnings", url,
     ]
-    if cookies_path and Path(cookies_path).exists():
-        probe_cmd.extend(["--cookies", cookies_path])
+    probe_cmd.extend(_cookie_args(cookies_path))
 
     try:
         result = subprocess.run(probe_cmd, capture_output=True, text=True, timeout=60, **subprocess_flags())
@@ -684,8 +701,7 @@ def download_video(
         ffmpeg_dir = find_ffmpeg_dir()
         if ffmpeg_dir:
             cmd.extend(["--ffmpeg-location", ffmpeg_dir])
-        if cookies_path and Path(cookies_path).exists():
-            cmd.extend(["--cookies", cookies_path])
+        cmd.extend(_cookie_args(cookies_path))
 
         try:
             with _process_lock:

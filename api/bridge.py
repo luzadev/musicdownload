@@ -170,6 +170,7 @@ class Api:
             "bitrate": payload.get("bitrate", "320K"),
             "hq_threshold": threshold,
             "cookies_path": (payload.get("cookies_path") or "").strip(),
+            "cookies_browser": (payload.get("cookies_browser") or "").strip().lower(),
             "output_dir": (payload.get("output_dir") or "").strip(),
             "theme": payload.get("theme", "dark"),
         })

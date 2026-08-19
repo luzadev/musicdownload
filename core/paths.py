@@ -45,6 +45,13 @@ def _bundle_dirs() -> list[Path]:
                     sub_macos = frameworks / sub / "Contents" / "MacOS"
                     if sub_macos.exists():
                         dirs.append(sub_macos)
+    else:
+        # Dev: cerca in <project_root>/bundle_bin/ così `python main.py`
+        # usa gli stessi binari del bundle (aggiornati via build_*.py)
+        # invece di Homebrew/PATH che possono essere obsoleti.
+        project_bundle = Path(__file__).resolve().parent.parent / "bundle_bin"
+        if project_bundle.exists():
+            dirs.append(project_bundle)
     return dirs
 
 
