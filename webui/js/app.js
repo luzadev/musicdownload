@@ -490,6 +490,12 @@ async function init() {
   if ($("#cookiesBrowserSelect")) $("#cookiesBrowserSelect").value = state.config.cookies_browser || "";
   $("#outputInput").value = state.config.output_dir || "";
   $("#themeSelect").value = state.config.theme || "dark";
+  // Popola path del log corrente
+  if ($("#logPathDisplay")) {
+    window.pywebview.api.get_log_file_path().then((p) => {
+      if (p) $("#logPathDisplay").textContent = p;
+    }).catch(() => {});
+  }
   applyTheme(state.config.theme);
 
   // Download tab — usa output_dir come default
@@ -1282,6 +1288,15 @@ $("#browseCookiesBtn").addEventListener("click", async () => {
     "All files (*.*)",
   ]);
   if (path) $("#cookiesInput").value = path;
+});
+
+$("#openLogFolderBtn")?.addEventListener("click", async () => {
+  try {
+    const r = await window.pywebview.api.open_log_folder();
+    if (!r || !r.ok) toast("Impossibile aprire la cartella: " + (r?.error || "errore"), "error");
+  } catch (e) {
+    toast("Errore: " + e, "error");
+  }
 });
 
 $("#browseOutputBtn").addEventListener("click", async () => {

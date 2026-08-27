@@ -151,6 +151,9 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   flex-direction: column;
   padding: 24px 12px;
   border-right: 1px solid var(--border);
+  height: 100vh;
+  min-height: 0;  /* consente ai flex children di rimpicciolirsi sotto il contenuto */
+  overflow: hidden;
 }
 
 .brand {
@@ -192,7 +195,17 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
   flex-direction: column;
   gap: 2px;
   flex: 1;
+  min-height: 0;    /* per far funzionare overflow su flex child */
+  overflow-y: auto; /* scrolla se ci sono troppi tab e la finestra è corta */
+  overflow-x: hidden;
+  scrollbar-width: thin;
 }
+.nav::-webkit-scrollbar { width: 6px; }
+.nav::-webkit-scrollbar-thumb {
+  background: var(--bg-input);
+  border-radius: 3px;
+}
+.nav::-webkit-scrollbar-thumb:hover { background: var(--bg-input-hover); }
 
 .nav-item {
   display: flex;

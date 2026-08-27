@@ -136,7 +136,40 @@ class Api:
             pass
 
     def _log(self, view: str, msg: str) -> None:
+        # Emit alla UI + mirror sul file di log persistente
         self._emit("log", {"view": view, "msg": msg})
+        try:
+            import logging
+            logging.getLogger(f"ui.{view}").info(msg)
+        except Exception:
+            pass
+
+    # ------------------------------------------------------------------
+    # Log persistente
+    # ------------------------------------------------------------------
+    def get_log_file_path(self) -> str:
+        """Ritorna il path del file di log corrente (per apertura da UI)."""
+        try:
+            from core.applog import log_file_path
+            return str(log_file_path())
+        except Exception:
+            return ""
+
+    def open_log_folder(self) -> dict:
+        """Apre la cartella dei log nel file manager del sistema."""
+        try:
+            from core.applog import log_file_path
+            import subprocess
+            folder = log_file_path().parent
+            if sys.platform == "darwin":
+                subprocess.Popen(["open", str(folder)])
+            elif sys.platform == "win32":
+                os.startfile(str(folder))  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", str(folder)])
+            return {"ok": True, "path": str(folder)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ------------------------------------------------------------------
     # Bootstrap

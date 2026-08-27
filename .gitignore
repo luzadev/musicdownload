@@ -55,3 +55,6 @@ dedup_cache.db
 dedup_cache.db-journal
 catalog_cache.db
 catalog_cache.db-journal
+
+# Log persistente (rotating file)
+logs/

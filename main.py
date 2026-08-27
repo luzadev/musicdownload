@@ -5,6 +5,17 @@ import sys
 from pathlib import Path
 
 # ============================================================
+# Logging persistente su file (rotazione giornaliera, 7 giorni).
+# Chiamato SUBITO cosi' ogni traceback o print da qui in poi
+# finisce nel file, anche in modalita' windowed.
+# ============================================================
+try:
+    from core.applog import setup as _setup_log
+    _setup_log()
+except Exception as _e:
+    print(f"[bootstrap] log setup failed: {_e}")
+
+# ============================================================
 # Fix SSL CA bundle: quando l'app e' frozen (PyInstaller) i moduli
 # ssl e requests non trovano nessun CA bundle di default -> tutte
 # le chiamate HTTPS falliscono con CERTIFICATE_VERIFY_FAILED.
