@@ -30,7 +30,10 @@ import requests
 # App key pubblica per MusicTools. Puo' essere sovrascritta passando
 # `app_key` esplicito o via config. Chiavi si ottengono gratis su
 # https://acoustid.org/api-key (max ~3 req/s).
-_APP_KEY = "8XaBELgH"  # placeholder demo — sostituibile via config
+# Default: chiave pubblica di MusicBrainz Picard (open-source tagger ufficiale).
+# Per uso intenso registra una app dedicata su https://acoustid.org/api-key
+# e settala in Impostazioni → acoustid_app_key.
+_APP_KEY = "v8pQ6oyB"
 _API_URL = "https://api.acoustid.org/v2/lookup"
 _REQUEST_TIMEOUT = 20
 _RATE_LIMIT_SEC = 0.35  # ~3 req/s max

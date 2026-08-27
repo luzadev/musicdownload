@@ -410,6 +410,7 @@ const logEls = {
   traxsource: () => $("#traxsource-log"),
   dedup: () => $("#dedup-log"),
   catalog: () => $("#catalog-log"),
+  flatten: () => $("#flatten-log"),
 };
 
 function classifyLog(msg) {
@@ -534,6 +535,7 @@ async function init() {
 
   // Cataloga tab (AcoustID -> <Anno>/<Genere>/)
   await CatalogUI.init();
+  await FlattenUI.init();
 }
 
 async function refreshRecDevices() {
@@ -3512,7 +3514,8 @@ const CatalogUI = (() => {
     btn.disabled = true;
     let res;
     try {
-      res = await window.pywebview.api.catalog_move_files(selectedEntries, target);
+      const layout = $("#catalog-layout")?.value || "year_genre";
+      res = await window.pywebview.api.catalog_move_files(selectedEntries, target, layout);
     } catch (e) {
       toast("Errore: " + ((e && e.message) || e), "error");
       btn.disabled = false;
@@ -3637,6 +3640,115 @@ const CatalogUI = (() => {
         setStatus(`Scansione completata · ${matched}/${total} identificati`, "ok");
       }
       finishScan();
+    };
+  }
+
+  return { init };
+})();
+
+// ============================================================
+// FlattenUI — appiattisci sotto-cartelle nella root
+// ============================================================
+const FlattenUI = (() => {
+  const mstate = { folder: "", removeEmpty: true, running: false };
+
+  function setStatus(text, kind) {
+    const el = $("#flatten-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  async function pickFolder() {
+    const p = await window.pywebview.api.flatten_pick_folder();
+    if (p && typeof p === "string") {
+      mstate.folder = p;
+      $("#flatten-path-display").textContent = p;
+      $("#flatten-start-btn").disabled = false;
+      setStatus("", "");
+    }
+  }
+
+  async function startFlatten() {
+    if (!mstate.folder) return;
+    mstate.removeEmpty = $("#flatten-remove-empty").checked;
+    if (!window.confirm(`Vuoi spostare TUTTI i file audio delle sotto-cartelle nella cartella:\n\n${mstate.folder}\n\n${mstate.removeEmpty ? "Le sotto-cartelle vuote verranno eliminate." : "Le sotto-cartelle vuote verranno lasciate."}\n\nProseguire?`)) return;
+
+    mstate.running = true;
+    $("#flatten-start-btn").disabled = true;
+    $("#flatten-pick-folder").disabled = true;
+    $("#flatten-stop-btn").hidden = false;
+    $("#flatten-log").innerHTML = "";
+    $("#flattenProgressFill").style.width = "0%";
+    $("#flattenPercent").textContent = "0%";
+    $("#flattenCounter").textContent = "In corso…";
+    setStatus("Operazione in corso...", "loading");
+
+    let res;
+    try {
+      res = await window.pywebview.api.flatten_start({
+        directory: mstate.folder,
+        remove_empty: mstate.removeEmpty,
+      });
+    } catch (e) {
+      setStatus("Errore: " + e, "error");
+      finishFlatten();
+      return;
+    }
+    if (!res || !res.ok) {
+      setStatus(res && res.error || "Errore avvio", "error");
+      finishFlatten();
+    }
+  }
+
+  async function stopFlatten() {
+    try { await window.pywebview.api.flatten_stop(); } catch {}
+  }
+
+  function finishFlatten() {
+    mstate.running = false;
+    $("#flatten-start-btn").disabled = !mstate.folder;
+    $("#flatten-pick-folder").disabled = false;
+    $("#flatten-stop-btn").hidden = true;
+  }
+
+  async function init() {
+    $("#flatten-pick-folder").addEventListener("click", pickFolder);
+    $("#flatten-start-btn").addEventListener("click", startFlatten);
+    $("#flatten-stop-btn").addEventListener("click", stopFlatten);
+
+    bridgeHandlers["flatten:progress"] = (p) => {
+      if (!p) return;
+      if (typeof p.overall === "number") {
+        const pct = Math.round(p.overall * 100);
+        $("#flattenProgressFill").style.width = pct + "%";
+        $("#flattenPercent").textContent = pct + "%";
+      }
+      if (typeof p.idx === "number" && typeof p.total === "number" && p.total > 0) {
+        const s = p.status || "";
+        let label;
+        if (s === "moving") label = `${p.idx}/${p.total} · ${p.filename || ""}`;
+        else if (s === "completed") label = `Completato: ${p.total} file`;
+        else if (s === "stopped") label = "Interrotta";
+        else if (s === "error") label = `${p.idx}/${p.total} · errore`;
+        else label = `${p.idx}/${p.total}`;
+        $("#flattenCounter").textContent = label;
+      }
+    };
+
+    bridgeHandlers["flatten:done"] = (p) => {
+      if (p && p.ok) {
+        const moved = p.moved || 0;
+        const dirs = p.dirs_removed || 0;
+        const failed = p.failed_count || 0;
+        const parts = [`${moved} file spostati`];
+        if (dirs) parts.push(`${dirs} cartelle rimosse`);
+        if (failed) parts.push(`${failed} errori`);
+        setStatus(parts.join(" · "), failed ? "error" : "ok");
+      } else if (p) {
+        setStatus(p.error || "Errore", "error");
+      }
+      finishFlatten();
     };
   }
 

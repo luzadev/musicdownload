@@ -53,3 +53,5 @@ server/dist/
 # Dedup local cache (SQLite fingerprint cache, per macchina dell'utente)
 dedup_cache.db
 dedup_cache.db-journal
+catalog_cache.db
+catalog_cache.db-journal

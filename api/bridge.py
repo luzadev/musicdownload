@@ -48,6 +48,7 @@ from core.upgrader import (
 )
 from core import dedup
 from core import catalog
+from core import flatten
 
 
 SPOTIFY_GUIDE_TEXT = """\
@@ -115,6 +116,7 @@ class Api:
         self._video_thread: Optional[threading.Thread] = None
         self._dedup_thread: Optional[threading.Thread] = None
         self._catalog_thread: Optional[threading.Thread] = None
+        self._flatten_thread: Optional[threading.Thread] = None
         # Coda usata dal resolve_callback per attendere la scelta utente
         # sul modal "match locali multipli" della tab Upgrade.
         self._upgrade_resolve_q: "queue.Queue[dict]" = queue.Queue(1)
@@ -2021,7 +2023,7 @@ class Api:
         self._log("catalog", "[INFO] Interruzione richiesta...")
         return {"ok": True}
 
-    def catalog_move_files(self, entries: list, target_root: str) -> dict:
+    def catalog_move_files(self, entries: list, target_root: str, layout: str = "year_genre") -> dict:
         """Sposta le entry selezionate in <target_root>/<year>/<genre>/.
 
         Non consuma quota (e' una riorganizzazione di file locali,
@@ -2043,7 +2045,8 @@ class Api:
                 pass
 
         try:
-            result = catalog.move_files(entries, target, log_callback=log_cb)
+            safe_layout = layout if layout in ("year_genre", "genre_year") else "year_genre"
+            result = catalog.move_files(entries, target, log_callback=log_cb, layout=safe_layout)
         except Exception as e:
             self._log("catalog", f"[ERRORE] move: {e}")
             return {"ok": False, "error": str(e)}
@@ -2063,6 +2066,88 @@ class Api:
             "failed": failed,
             "operations": result.get("operations", []),
         }
+
+    # ------------------------------------------------------------------
+    # FLATTEN — sposta tutti i file audio delle sotto-cartelle nella root
+    # ------------------------------------------------------------------
+    def flatten_pick_folder(self) -> str:
+        if not self.window:
+            return ""
+        try:
+            r = self.window.create_file_dialog(self._folder_dialog_type())
+        except Exception:
+            return ""
+        if not r:
+            return ""
+        return str(r[0]) if isinstance(r, (list, tuple)) else str(r)
+
+    def flatten_start(self, payload: dict) -> dict:
+        """Payload: {directory, remove_empty}."""
+        if self._flatten_thread and self._flatten_thread.is_alive():
+            return {"ok": False, "error": "Operazione gia' in corso"}
+        directory = (payload.get("directory") or "").strip()
+        if not directory:
+            return {"ok": False, "error": "Cartella non impostata"}
+        if not os.path.isdir(directory):
+            return {"ok": False, "error": "Cartella non trovata"}
+        remove_empty = bool(payload.get("remove_empty", True))
+        self._flatten_thread = threading.Thread(
+            target=self._flatten_worker,
+            args=(directory, remove_empty),
+            daemon=True,
+        )
+        self._flatten_thread.start()
+        return {"ok": True}
+
+    def flatten_stop(self) -> dict:
+        flatten.request_stop()
+        return {"ok": True}
+
+    def _flatten_worker(self, directory: str, remove_empty: bool) -> None:
+        view = "flatten"
+        self._log(view, f"[INFO] Appiattisco: {directory} (remove_empty={remove_empty})")
+
+        def progress_cb(idx, total, name, status, err=""):
+            payload = {"idx": idx, "total": total, "filename": name, "status": status}
+            if err:
+                payload["error_msg"] = err
+            if total > 0:
+                payload["overall"] = min(idx / total, 1.0)
+            if status == "completed":
+                payload["overall"] = 1.0
+                self._log(view, f"[INFO] Completato: {total} file processati.")
+            elif status == "stopped":
+                self._log(view, "[INFO] Operazione interrotta.")
+            elif status == "error" and name:
+                self._log(view, f"[ERRORE] {name}: {err}")
+            self._emit("flatten:progress", payload)
+
+        def log_cb(op):
+            self._log(view, f"[MOVE] {op.get('src','')} → {op.get('dst','')}")
+
+        try:
+            result = flatten.flatten_folder(
+                directory,
+                remove_empty=remove_empty,
+                progress_callback=progress_cb,
+                log_callback=log_cb,
+            )
+        except Exception as e:
+            self._log(view, f"[ERRORE] {e}")
+            self._emit("flatten:done", {"ok": False, "error": str(e)})
+            return
+
+        moved = result.get("moved", 0)
+        failed = result.get("failed", []) or []
+        dirs_removed = result.get("dirs_removed", 0)
+        self._log(view, f"[OK] Spostati {moved} file. Cartelle rimosse: {dirs_removed}. Falliti: {len(failed)}.")
+        self._emit("flatten:done", {
+            "ok": True,
+            "moved": moved,
+            "failed_count": len(failed),
+            "failed": failed,
+            "dirs_removed": dirs_removed,
+        })
 
     def _catalog_worker(self, directory: str, recursive: bool) -> None:
         """Esegue scan + lookup AcoustID in background, emette streaming."""
@@ -2107,12 +2192,25 @@ class Api:
             except Exception:
                 pass
 
+        # Prova a ottenere un token Spotify per il fallback (facoltativo).
+        # Se non ci sono creds o l'auth fallisce, procediamo senza fallback.
+        spotify_token = None
+        try:
+            cfg = load_config()
+            cid = (cfg.get("client_id") or "").strip()
+            csecret = (cfg.get("client_secret") or "").strip()
+            if cid and csecret:
+                spotify_token = get_access_token(cid, csecret)
+        except Exception:
+            spotify_token = None
+
         try:
             entries = catalog.scan_folder(
                 directory,
                 recursive=recursive,
                 progress_callback=progress_cb,
                 entry_callback=entry_cb,
+                spotify_token=spotify_token,
             )
         except Exception as e:
             self._log(view, f"[ERRORE] {e}")

@@ -57,6 +57,10 @@
           <span class="nav-icon">📅</span>
           <span>Cataloga</span>
         </button>
+        <button class="nav-item" data-view="flatten" data-feature="audio">
+          <span class="nav-icon">📤</span>
+          <span>Appiattisci</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -1350,12 +1354,21 @@
           <div class="beatport-header" style="margin-top:12px;gap:16px;">
             <span id="catalog-target-display" class="beatport-output-info" style="margin:0;">Uguale alla sorgente (in-place)</span>
           </div>
+          <div class="beatport-header" style="margin-top:12px;gap:12px;">
+            <label style="display:flex;gap:8px;align-items:center;color:var(--text-2);font-size:13px;">
+              <span>Struttura cartelle:</span>
+              <select id="catalog-layout" class="input" style="padding:4px 8px;font-size:13px;">
+                <option value="year_genre">&lt;Anno&gt;/&lt;Genere&gt;/</option>
+                <option value="genre_year">&lt;Genere&gt;/&lt;Anno&gt;/</option>
+              </select>
+            </label>
+          </div>
           <div class="hint" style="margin-top:10px;">
             <span class="hint-ico">ⓘ</span>
             <div>
               Se lasci vuota la destinazione i file vengono organizzati <strong>in-place</strong> nella cartella sorgente.
-              Le sottocartelle <code>&lt;Anno&gt;/&lt;Genere&gt;/</code> vengono create automaticamente.
-              File senza match AcoustID finiscono in <code>Unknown Year/Unknown Genre/</code>.
+              Le sottocartelle vengono create automaticamente in base allo schema scelto.
+              File senza match finiscono in <code>Unknown Year</code> / <code>Unknown Genre</code>.
             </div>
           </div>
           <div id="catalog-status" class="beatport-status"></div>
@@ -1405,6 +1418,64 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="catalog-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: FLATTEN ===== -->
+      <section class="view" id="view-flatten">
+        <header class="hero hero-blue">
+          <div class="hero-content">
+            <div class="hero-eyebrow blue">APPIATTISCI</div>
+            <h1 class="hero-title">Sposta tutti i brani nella cartella padre</h1>
+            <p class="hero-subtitle">
+              Scansiona ricorsivamente ogni sotto-cartella e sposta i file audio nella root.
+              Utile come "undo" della catalogazione o per unire archivi frammentati.
+            </p>
+          </div>
+          <div class="hero-deco">📤</div>
+        </header>
+
+        <h2 class="section-label">Cartella</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <button id="flatten-pick-folder" class="btn btn-primary pill">📁 Scegli cartella</button>
+            <button id="flatten-start-btn" class="btn btn-blue pill" disabled>▶ Sposta tutto nella root</button>
+            <button id="flatten-stop-btn" class="btn btn-danger pill" hidden>■ Interrompi</button>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;">
+            <span id="flatten-path-display" class="beatport-output-info" style="margin:0;">Nessuna cartella selezionata</span>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;">
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="checkbox" id="flatten-remove-empty" checked />
+              <span>Elimina le sotto-cartelle rimaste vuote dopo lo spostamento</span>
+            </label>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            <span class="hint-ico">ⓘ</span>
+            <div>
+              Ogni file con estensione audio (mp3, m4a, wav, flac...) nelle sotto-cartelle
+              verrà spostato nella cartella padre. In caso di nomi duplicati viene aggiunto
+              suffisso <code>_1</code>, <code>_2</code>... (nessun overwrite).
+            </div>
+          </div>
+          <div id="flatten-status" class="beatport-status"></div>
+        </div>
+
+        <h2 class="section-label">Progresso</h2>
+        <div class="card">
+          <div class="progress">
+            <div class="progress-bar"><div id="flattenProgressFill" class="progress-fill blue"></div></div>
+            <div class="progress-meta">
+              <span id="flattenPercent" class="percent blue">0%</span>
+              <span id="flattenCounter">In attesa</span>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="flatten-log"></div>
         </div>
       </section>
 

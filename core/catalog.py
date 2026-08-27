@@ -28,6 +28,79 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from core.acoustid import lookup
+
+
+_NUM_PREFIX = re.compile(r"^\s*\d+\s*[.\-)]\s*")
+_PAREN_TAIL = re.compile(r"\s*[\[(].*?[\])]\s*$")
+_DASH_SPLIT = re.compile(r"\s+[-–—]\s+")
+
+
+def _parse_filename(stem: str) -> tuple:
+    """Estrae (artist, title) da nome file tipo 'Artista - Titolo (Mix)'.
+    Ritorna ('', stem) se non c'è dash separator."""
+    s = stem.strip()
+    s = _NUM_PREFIX.sub("", s)
+    # Rimuove parentesi finali (Extended Mix), [Original Mix] ecc.
+    for _ in range(3):
+        s = _PAREN_TAIL.sub("", s).strip()
+    parts = _DASH_SPLIT.split(s, maxsplit=1)
+    if len(parts) == 2:
+        artist, title = parts[0].strip(), parts[1].strip()
+        if artist and title:
+            return artist, title
+    return "", s
+
+
+def _spotify_lookup_fallback(stem: str, token: str, genre_cache: dict) -> Optional[dict]:
+    """Fallback quando AcoustID non trova nulla: search Spotify col filename.
+
+    Ritorna {matched, year, genre, artist, title} o None su errore.
+    Popola `genre_cache` (dict artist_id → primo genere) per non chiamare
+    l'API `/artists/<id>` per ogni traccia dello stesso artista.
+    """
+    from core.spotify_client import search_tracks, get_artist_genres
+
+    artist_hint, title_hint = _parse_filename(stem)
+    query = f"{artist_hint} {title_hint}".strip() if artist_hint else title_hint
+    if not query:
+        return None
+
+    try:
+        results = search_tracks(token, query, limit=1)
+    except Exception:
+        return None
+    if not results:
+        return None
+
+    top = results[0]
+    release_date = (top.get("release_date") or "").strip()
+    year = None
+    if len(release_date) >= 4 and release_date[:4].isdigit():
+        year = int(release_date[:4])
+
+    # Prendi il primo genere dell'artista (con cache per non abusare l'API)
+    genre = ""
+    artist_id = top.get("artist_id") or ""
+    if artist_id:
+        if artist_id in genre_cache:
+            genres = genre_cache[artist_id]
+        else:
+            try:
+                genres = get_artist_genres(token, artist_id) or []
+            except Exception:
+                genres = []
+            genre_cache[artist_id] = genres
+        if genres:
+            genre = genres[0]
+
+    return {
+        "matched": bool(year or genre or top.get("name")),
+        "year": year,
+        "genre": genre,
+        "artist": top.get("artists", "") or "",
+        "title": top.get("name", "") or "",
+        "_source": "spotify",
+    }
 from core.dedup import compute_fingerprint
 from core.paths import find_fpcalc
 from core.upgrader import AUDIO_EXTENSIONS
@@ -89,6 +162,7 @@ def scan_folder(
     recursive: bool = True,
     progress_callback: Optional[Callable] = None,
     entry_callback: Optional[Callable] = None,
+    spotify_token: Optional[str] = None,
 ) -> list:
     """Scansiona la cartella e ritorna la lista di entry con metadata.
 
@@ -127,6 +201,8 @@ def scan_folder(
     fpcalc = find_fpcalc()
 
     entries: list = []
+    # Cache locale per non re-fetchare i generi dello stesso artista Spotify
+    _spotify_genre_cache: dict = {}
     for i, fp_path in enumerate(files, start=1):
         if is_stopped():
             _emit_progress(progress_callback, i - 1, total, "", "stopped", "")
@@ -166,15 +242,30 @@ def scan_folder(
         _emit_progress(progress_callback, i, total, fp_path.name, "lookup", "")
         info = lookup(fp_hash, duration)
 
+        matched = bool(info.get("matched"))
+        source = "acoustid"
+
+        # Fallback su Spotify se AcoustID non ha trovato niente e abbiamo il token.
+        # Molti file (mashup, bootleg, extended mix) non sono in MusicBrainz ma Spotify
+        # ha ottima copertura per dance/electronic.
+        if not matched and spotify_token:
+            _emit_progress(progress_callback, i, total, fp_path.name, "spotify_fallback", "")
+            fb = _spotify_lookup_fallback(fp_path.stem, spotify_token, _spotify_genre_cache)
+            if fb and fb.get("matched"):
+                info = fb
+                matched = True
+                source = "spotify"
+
         entry = {
             "path": str(fp_path),
             "size": size,
             "fingerprint": fp_hash,
-            "matched": bool(info.get("matched")),
+            "matched": matched,
             "year": info.get("year"),
             "genre": (info.get("genre") or "").strip(),
             "artist": (info.get("artist") or "").strip(),
             "title": (info.get("title") or "").strip(),
+            "source": source,
         }
         if info.get("error"):
             entry["error"] = info["error"]
@@ -210,7 +301,8 @@ def _emit_progress(cb: Optional[Callable], idx: int, total: int,
 # Move
 # ------------------------------------------------------------------
 def move_files(entries: list, target_root: str,
-                log_callback: Optional[Callable] = None) -> dict:
+                log_callback: Optional[Callable] = None,
+                layout: str = "year_genre") -> dict:
     """Sposta i file elencati in `<target_root>/<year>/<genre>/<filename>`.
 
     - Se `year` manca → cartella "Unknown Year"
@@ -258,7 +350,10 @@ def move_files(entries: list, target_root: str,
         year_folder = str(year) if year else "Unknown Year"
         genre_folder = _sanitize_folder(genre) or "Unknown Genre"
 
-        dst_dir = target_base / year_folder / genre_folder
+        if layout == "genre_year":
+            dst_dir = target_base / genre_folder / year_folder
+        else:  # year_genre (default)
+            dst_dir = target_base / year_folder / genre_folder
         try:
             dst_dir.mkdir(parents=True, exist_ok=True)
         except OSError as e:
