@@ -47,6 +47,7 @@ from core.upgrader import (
     count_files_info,
 )
 from core import dedup
+from core import catalog
 
 
 SPOTIFY_GUIDE_TEXT = """\
@@ -113,6 +114,7 @@ class Api:
         self._upgrade_thread: Optional[threading.Thread] = None
         self._video_thread: Optional[threading.Thread] = None
         self._dedup_thread: Optional[threading.Thread] = None
+        self._catalog_thread: Optional[threading.Thread] = None
         # Coda usata dal resolve_callback per attendere la scelta utente
         # sul modal "match locali multipli" della tab Upgrade.
         self._upgrade_resolve_q: "queue.Queue[dict]" = queue.Queue(1)
@@ -1962,4 +1964,171 @@ class Api:
             "n_groups": n_groups,
             "n_dupes": n_dupes,
             "reclaimable_bytes": total_bytes,
+        })
+
+    # ================================================================
+    # CATALOGA — sposta file audio in <output>/<Anno>/<Genere>/
+    # via Chromaprint + AcoustID.
+    # ================================================================
+    def catalog_pick_source_folder(self) -> str:
+        """Folder picker per la cartella sorgente da catalogare."""
+        return self.browse_directory()
+
+    def catalog_pick_target_folder(self) -> str:
+        """Folder picker per la cartella target (dove finiscono i file
+        organizzati). Se l'utente lascia vuoto → si usa la source."""
+        return self.browse_directory()
+
+    def catalog_start_scan(self, payload: dict) -> dict:
+        """Avvia worker di scansione + lookup AcoustID. Payload:
+        {source, target?, recursive}. Persiste last source/target/recursive.
+        """
+        if self._catalog_thread and self._catalog_thread.is_alive():
+            return {"ok": False, "error": "Scansione catalogo gia in corso"}
+
+        source = (payload.get("source") or "").strip()
+        target = (payload.get("target") or "").strip()
+        recursive = bool(payload.get("recursive", True))
+
+        if not source:
+            return {"ok": False, "error": "Cartella input non impostata"}
+        if not os.path.isdir(source):
+            return {"ok": False, "error": "Cartella input non trovata"}
+        # target vuoto → sposta in-place nella source
+        if not target:
+            target = source
+
+        # Persist last source/target/recursive
+        try:
+            cfg = load_config()
+            cfg["catalog_last_source"] = source
+            cfg["catalog_last_target"] = target
+            cfg["catalog_recursive"] = recursive
+            save_config(cfg)
+        except Exception:
+            pass
+
+        self._catalog_thread = threading.Thread(
+            target=self._catalog_worker,
+            args=(source, recursive),
+            daemon=True,
+        )
+        self._catalog_thread.start()
+        return {"ok": True}
+
+    def catalog_stop_scan(self) -> dict:
+        catalog.request_stop()
+        self._log("catalog", "[INFO] Interruzione richiesta...")
+        return {"ok": True}
+
+    def catalog_move_files(self, entries: list, target_root: str) -> dict:
+        """Sposta le entry selezionate in <target_root>/<year>/<genre>/.
+
+        Non consuma quota (e' una riorganizzazione di file locali,
+        non un download). Ritorna il summary con moved/failed/operations.
+        """
+        if not isinstance(entries, list):
+            return {"ok": False, "error": "entries deve essere una lista"}
+        target = (target_root or "").strip()
+        if not target:
+            return {"ok": False, "error": "Cartella destinazione mancante"}
+
+        def log_cb(op: dict) -> None:
+            src = op.get("src", "")
+            dst = op.get("dst", "")
+            self._log("catalog", f"[MOVE] {src} → {dst}")
+            try:
+                self._emit("catalog:log", op)
+            except Exception:
+                pass
+
+        try:
+            result = catalog.move_files(entries, target, log_callback=log_cb)
+        except Exception as e:
+            self._log("catalog", f"[ERRORE] move: {e}")
+            return {"ok": False, "error": str(e)}
+
+        moved_n = result.get("moved", 0)
+        failed = result.get("failed", []) or []
+        if moved_n:
+            self._log("catalog", f"[OK] {moved_n} file organizzati")
+        for f in failed:
+            self._log("catalog",
+                      f"[ERRORE] {f.get('path')}: {f.get('error')}")
+
+        return {
+            "ok": True,
+            "moved": moved_n,
+            "failed_count": len(failed),
+            "failed": failed,
+            "operations": result.get("operations", []),
+        }
+
+    def _catalog_worker(self, directory: str, recursive: bool) -> None:
+        """Esegue scan + lookup AcoustID in background, emette streaming."""
+        view = "catalog"
+        catalog.reset_stop()
+        self._log(view,
+                  f"[INFO] Scansione: {directory} (recursive={recursive})")
+
+        _last = [0.0]
+        _THROTTLE = 0.05
+
+        def progress_cb(idx: int, total: int, filename: str,
+                         status: str, err_msg: str = "") -> None:
+            # Throttle solo eventi "computing"/"lookup" (possono essere tanti)
+            if status in ("computing", "lookup"):
+                now = time.monotonic()
+                if now - _last[0] < _THROTTLE and idx != total:
+                    return
+                _last[0] = now
+            payload_evt = {
+                "idx": idx, "total": total,
+                "filename": filename, "status": status,
+            }
+            if err_msg:
+                payload_evt["error_msg"] = err_msg
+            if total > 0:
+                payload_evt["overall"] = min(idx / total, 1.0)
+            if status == "completed":
+                payload_evt["overall"] = 1.0
+                self._log(view, f"[INFO] Scansione completata ({total} file).")
+            elif status == "stopped":
+                self._log(view, "[INFO] Scansione interrotta.")
+            elif status == "error" and filename:
+                detail = f": {err_msg}" if err_msg else ""
+                self._log(view, f"[ERRORE] {filename}{detail}")
+            self._emit("catalog:progress", payload_evt)
+
+        def entry_cb(entry: dict) -> None:
+            """Streaming: appena un file è processato, emit alla UI."""
+            try:
+                self._emit("catalog:entry", entry)
+            except Exception:
+                pass
+
+        try:
+            entries = catalog.scan_folder(
+                directory,
+                recursive=recursive,
+                progress_callback=progress_cb,
+                entry_callback=entry_cb,
+            )
+        except Exception as e:
+            self._log(view, f"[ERRORE] {e}")
+            self._emit("catalog:done", {"ok": False, "error": str(e),
+                                         "entries": []})
+            return
+
+        n_matched = sum(1 for e in entries if e.get("matched"))
+        n_unmatched = len(entries) - n_matched
+        self._log(view,
+                  f"[INFO] Match AcoustID: {n_matched} · non identificati: "
+                  f"{n_unmatched} (totale {len(entries)})")
+        self._emit("catalog:done", {
+            "ok": True,
+            "entries": entries,
+            "n_total": len(entries),
+            "n_matched": n_matched,
+            "n_unmatched": n_unmatched,
         })

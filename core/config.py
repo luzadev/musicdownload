@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.10.1"
+VERSION = "v1.11.0"
 
 
 APP_NAME = "MusicTools"
@@ -83,6 +83,11 @@ DEFAULTS = {
     "dedup_last_folder": "",
     "dedup_recursive": True,
     "dedup_method": "fingerprint",  # "fingerprint" | "filename"
+    # ---- Cataloga (AcoustID -> <Anno>/<Genere>/) ----
+    "catalog_last_source": "",
+    "catalog_last_target": "",
+    "catalog_recursive": True,
+    "acoustid_app_key": "",  # opzionale: se vuoto usa default in core/acoustid.py
     # ---- Licenza ----
     "license_key": "",          # chiave fornita all'utente via email
     "license_email": "",        # email associata all'acquisto
