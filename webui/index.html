@@ -53,6 +53,10 @@
           <span class="nav-icon">🗑</span>
           <span>Dedup</span>
         </button>
+        <button class="nav-item" data-view="catalog" data-feature="audio">
+          <span class="nav-icon">📅</span>
+          <span>Cataloga</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -1304,6 +1308,106 @@
         </div>
       </section>
 
+      <!-- ===== VIEW: CATALOGA (AcoustID -> <Anno>/<Genere>/) ===== -->
+      <section class="view" id="view-catalog">
+        <header class="hero hero-purple">
+          <div class="hero-content">
+            <div class="hero-eyebrow purple">CATALOGA</div>
+            <h1 class="hero-title">Organizza per anno e genere</h1>
+            <p class="hero-subtitle">Identifica ogni brano via audio fingerprint (Chromaprint + AcoustID) e sposta i file in <code>&lt;Anno&gt;/&lt;Genere&gt;/</code>.</p>
+          </div>
+          <div class="hero-deco">📅</div>
+        </header>
+
+        <h2 class="section-label">Sorgente</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <button id="catalog-pick-source" class="btn btn-primary pill">📁 Cartella input</button>
+            <button id="catalog-start-btn" class="btn btn-primary pill" disabled>
+              <span class="ico">▶</span> Scansiona
+            </button>
+            <button id="catalog-stop-btn" class="btn btn-danger pill" hidden>
+              <span class="ico">◼</span> Interrompi
+            </button>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <span id="catalog-source-display" class="beatport-output-info" style="margin:0;">Nessuna cartella selezionata</span>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="checkbox" id="catalog-recursive" checked />
+              <span>Ricerca ricorsiva (include sottocartelle)</span>
+            </label>
+          </div>
+        </div>
+
+        <h2 class="section-label">Destinazione</h2>
+        <div class="card">
+          <div class="beatport-header">
+            <button id="catalog-pick-target" class="btn btn-ghost pill">📁 Cartella destinazione</button>
+            <button id="catalog-clear-target" class="btn btn-ghost pill btn-sm">Usa la stessa della sorgente</button>
+          </div>
+          <div class="beatport-header" style="margin-top:12px;gap:16px;">
+            <span id="catalog-target-display" class="beatport-output-info" style="margin:0;">Uguale alla sorgente (in-place)</span>
+          </div>
+          <div class="hint" style="margin-top:10px;">
+            <span class="hint-ico">ⓘ</span>
+            <div>
+              Se lasci vuota la destinazione i file vengono organizzati <strong>in-place</strong> nella cartella sorgente.
+              Le sottocartelle <code>&lt;Anno&gt;/&lt;Genere&gt;/</code> vengono create automaticamente.
+              File senza match AcoustID finiscono in <code>Unknown Year/Unknown Genre/</code>.
+            </div>
+          </div>
+          <div id="catalog-status" class="beatport-status"></div>
+        </div>
+
+        <h2 class="section-label">Progresso</h2>
+        <div class="card">
+          <div class="progress">
+            <div class="progress-bar"><div id="catalogProgressFill" class="progress-fill purple"></div></div>
+            <div class="progress-meta">
+              <span id="catalogPercent" class="percent purple">0%</span>
+              <span id="catalogCounter">In attesa</span>
+            </div>
+          </div>
+        </div>
+
+        <h2 class="section-label">Risultati</h2>
+        <div class="card" id="catalog-summary-card" hidden>
+          <div class="catalog-summary" id="catalog-summary-line"></div>
+        </div>
+        <div id="catalog-table-wrap" class="catalog-scroll" hidden>
+          <table class="catalog-table">
+            <thead>
+              <tr>
+                <th class="catalog-col-check">
+                  <input type="checkbox" id="catalog-select-all" title="Seleziona/deseleziona tutti"/>
+                </th>
+                <th class="catalog-col-file">File</th>
+                <th class="catalog-col-artist">Artista</th>
+                <th class="catalog-col-title">Titolo</th>
+                <th class="catalog-col-year">Anno</th>
+                <th class="catalog-col-genre">Genere</th>
+                <th class="catalog-col-status">Stato</th>
+              </tr>
+            </thead>
+            <tbody id="catalog-table-body"></tbody>
+          </table>
+        </div>
+
+        <div class="catalog-footer-bar" id="catalog-footer-bar" hidden>
+          <span class="counter" id="catalog-selected-count">0 file selezionati</span>
+          <button id="catalog-move-btn" class="btn btn-danger pill" disabled>
+            <span class="ico">📦</span> Sposta selezionati
+          </button>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="catalog-log"></div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -1393,6 +1497,29 @@
         <button class="btn btn-ghost pill" id="upgradePickerYoutubeBtn">Cerca su YouTube</button>
         <button class="btn btn-ghost pill" id="upgradePickerSkipBtn">Salta</button>
         <button class="btn btn-danger pill" id="upgradePickerCancelAllBtn">■ Annulla tutto</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============== MODAL: Cataloga — conferma spostamento ============== -->
+  <div class="modal-backdrop" id="catalogConfirmModal" hidden>
+    <div class="modal">
+      <div class="modal-head">
+        <h2>Conferma spostamento</h2>
+        <button class="modal-close" id="catalogConfirmCloseBtn">×</button>
+      </div>
+      <div class="modal-body">
+        <p id="catalogConfirmMsg">Stai per spostare N file. Procedi?</p>
+        <p class="modal-hint">
+          L'operazione riorganizza i file in sottocartelle
+          <code>&lt;Anno&gt;/&lt;Genere&gt;/</code>. E' reversibile
+          manualmente dal log ma puo' richiedere tempo su cartelle
+          grandi.
+        </p>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost pill" id="catalogConfirmCancelBtn">Annulla</button>
+        <button class="btn btn-danger pill" id="catalogConfirmProceedBtn">Sposta</button>
       </div>
     </div>
   </div>

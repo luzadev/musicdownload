@@ -409,6 +409,7 @@ const logEls = {
   convert: () => $("#convert-log"),
   traxsource: () => $("#traxsource-log"),
   dedup: () => $("#dedup-log"),
+  catalog: () => $("#catalog-log"),
 };
 
 function classifyLog(msg) {
@@ -530,6 +531,9 @@ async function init() {
 
   // Dedup tab (audio duplicati via Chromaprint)
   await DedupUI.init();
+
+  // Cataloga tab (AcoustID -> <Anno>/<Genere>/)
+  await CatalogUI.init();
 }
 
 async function refreshRecDevices() {
@@ -3197,6 +3201,440 @@ const DedupUI = (() => {
         setStatus("Nessun duplicato trovato", "ok");
       } else {
         setStatus(`Trovati ${mstate.groups.length} gruppi di duplicati`, "ok");
+      }
+      finishScan();
+    };
+  }
+
+  return { init };
+})();
+
+// ============================================================
+// CatalogUI — AcoustID -> <Anno>/<Genere>/
+// ============================================================
+const CatalogUI = (() => {
+  const cstate = {
+    source: "",
+    target: "",
+    recursive: true,
+    scanning: false,
+    // Map path -> entry (mantiene ordine di inserimento = streaming order)
+    entries: new Map(),
+    // Set di path selezionati per il move
+    toMove: new Set(),
+  };
+
+  function setStatus(text, kind) {
+    const el = $("#catalog-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  function _effectiveTarget() {
+    return cstate.target || cstate.source || "";
+  }
+
+  function updateTargetDisplay() {
+    const el = $("#catalog-target-display");
+    if (!el) return;
+    if (cstate.target) {
+      el.textContent = cstate.target;
+    } else if (cstate.source) {
+      el.textContent = "Uguale alla sorgente: " + cstate.source;
+    } else {
+      el.textContent = "Uguale alla sorgente (in-place)";
+    }
+  }
+
+  function updateSelectedCount() {
+    const n = cstate.toMove.size;
+    const cnt = $("#catalog-selected-count");
+    if (cnt) cnt.textContent = n === 1 ? "1 file selezionato" : `${n} file selezionati`;
+    const btn = $("#catalog-move-btn");
+    if (btn) btn.disabled = n === 0 || cstate.scanning;
+    const bar = $("#catalog-footer-bar");
+    if (bar) bar.hidden = cstate.entries.size === 0;
+  }
+
+  function _statusBadge(entry) {
+    if (entry.error) {
+      return `<span class="catalog-status-badge err" title="${_escapeHtml(entry.error)}">errore</span>`;
+    }
+    if (entry.matched && entry.year && entry.genre) {
+      return `<span class="catalog-status-badge ok">match</span>`;
+    }
+    if (entry.matched) {
+      // Match parziale (mancano anno o genere)
+      return `<span class="catalog-status-badge warn">parziale</span>`;
+    }
+    return `<span class="catalog-status-badge warn">sconosciuto</span>`;
+  }
+
+  function _rowShouldBePreselected(entry) {
+    // Preselezione: solo match validi (year AND genre presenti).
+    return !!(entry.matched && entry.year && entry.genre);
+  }
+
+  function _renderRow(entry) {
+    const path = entry.path;
+    const tr = document.createElement("tr");
+    tr.dataset.path = path;
+    const unmatched = !entry.matched || !entry.year || !entry.genre;
+    if (unmatched) tr.classList.add("catalog-row-unmatched");
+
+    // Checkbox
+    const tdCheck = document.createElement("td");
+    tdCheck.className = "catalog-col-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "catalog-check";
+    const pre = _rowShouldBePreselected(entry);
+    cb.checked = pre;
+    if (pre) cstate.toMove.add(path);
+    cb.addEventListener("change", () => {
+      if (cb.checked) cstate.toMove.add(path);
+      else cstate.toMove.delete(path);
+      updateSelectedCount();
+    });
+    tdCheck.appendChild(cb);
+    tr.appendChild(tdCheck);
+
+    // File (basename)
+    const tdFile = document.createElement("td");
+    tdFile.className = "catalog-col-file";
+    tdFile.innerHTML = `<span class="catalog-file-cell" title="${_escapeHtml(path)}">${_escapeHtml(_basename(path))}</span>`;
+    tr.appendChild(tdFile);
+
+    // Artista
+    const tdArtist = document.createElement("td");
+    tdArtist.className = "catalog-col-artist";
+    tdArtist.textContent = entry.artist || "—";
+    tdArtist.title = entry.artist || "";
+    tr.appendChild(tdArtist);
+
+    // Titolo
+    const tdTitle = document.createElement("td");
+    tdTitle.className = "catalog-col-title";
+    tdTitle.textContent = entry.title || "—";
+    tdTitle.title = entry.title || "";
+    tr.appendChild(tdTitle);
+
+    // Anno
+    const tdYear = document.createElement("td");
+    tdYear.className = "catalog-col-year";
+    tdYear.textContent = entry.year ? String(entry.year) : "—";
+    tr.appendChild(tdYear);
+
+    // Genere
+    const tdGenre = document.createElement("td");
+    tdGenre.className = "catalog-col-genre";
+    tdGenre.textContent = entry.genre || "—";
+    tdGenre.title = entry.genre || "";
+    tr.appendChild(tdGenre);
+
+    // Status
+    const tdStatus = document.createElement("td");
+    tdStatus.className = "catalog-col-status";
+    tdStatus.innerHTML = _statusBadge(entry);
+    tr.appendChild(tdStatus);
+
+    return tr;
+  }
+
+  function _upsertEntry(entry) {
+    if (!entry || !entry.path) return;
+    const wrap = $("#catalog-table-wrap");
+    const body = $("#catalog-table-body");
+    if (!body) return;
+    const existed = cstate.entries.has(entry.path);
+    cstate.entries.set(entry.path, entry);
+
+    if (existed) {
+      // Aggiorna in place: rimuovi vecchia riga e append nuova nella stessa posizione
+      const oldRow = body.querySelector(`tr[data-path="${CSS.escape(entry.path)}"]`);
+      const newRow = _renderRow(entry);
+      if (oldRow) body.replaceChild(newRow, oldRow);
+      else body.appendChild(newRow);
+    } else {
+      body.appendChild(_renderRow(entry));
+    }
+    if (wrap) wrap.hidden = false;
+    _updateSummary();
+    updateSelectedCount();
+  }
+
+  function _updateSummary() {
+    const line = $("#catalog-summary-line");
+    const card = $("#catalog-summary-card");
+    if (!line || !card) return;
+    const n = cstate.entries.size;
+    if (n === 0) { card.hidden = true; return; }
+    let matched = 0, unknown = 0, errors = 0;
+    cstate.entries.forEach((e) => {
+      if (e.error) errors++;
+      else if (e.matched && e.year && e.genre) matched++;
+      else unknown++;
+    });
+    line.textContent =
+      `${n} file · ${matched} identificati · ${unknown} parziali/sconosciuti · ${errors} errori`;
+    card.hidden = false;
+  }
+
+  function _clearTable() {
+    const body = $("#catalog-table-body");
+    if (body) body.innerHTML = "";
+    const wrap = $("#catalog-table-wrap");
+    if (wrap) wrap.hidden = true;
+    const card = $("#catalog-summary-card");
+    if (card) card.hidden = true;
+    cstate.entries.clear();
+    cstate.toMove.clear();
+    updateSelectedCount();
+  }
+
+  async function pickSource() {
+    const p = await window.pywebview.api.catalog_pick_source_folder();
+    if (p && typeof p === "string") {
+      cstate.source = p;
+      $("#catalog-source-display").textContent = p;
+      $("#catalog-start-btn").disabled = false;
+      updateTargetDisplay();
+      setStatus("", "");
+    }
+  }
+
+  async function pickTarget() {
+    const p = await window.pywebview.api.catalog_pick_target_folder();
+    if (p && typeof p === "string") {
+      cstate.target = p;
+      updateTargetDisplay();
+    }
+  }
+
+  function clearTarget() {
+    cstate.target = "";
+    updateTargetDisplay();
+  }
+
+  async function startScan() {
+    if (!cstate.source) return;
+    cstate.recursive = $("#catalog-recursive").checked;
+    cstate.scanning = true;
+    _clearTable();
+    $("#catalog-start-btn").disabled = true;
+    $("#catalog-pick-source").disabled = true;
+    $("#catalog-stop-btn").hidden = false;
+    $("#catalog-log").innerHTML = "";
+    $("#catalogProgressFill").style.width = "0%";
+    $("#catalogPercent").textContent = "0%";
+    $("#catalogCounter").textContent = "Scansione in corso…";
+    setStatus("Scansione in corso...", "loading");
+
+    let res;
+    try {
+      res = await window.pywebview.api.catalog_start_scan({
+        source: cstate.source,
+        target: cstate.target,
+        recursive: cstate.recursive,
+      });
+    } catch (e) {
+      setStatus("Errore avvio: " + ((e && e.message) || e), "error");
+      finishScan();
+      return;
+    }
+    if (!res || !res.ok) {
+      const msg = (res && res.error) || "Impossibile avviare la scansione";
+      setStatus(msg, "error");
+      if (!handleGateBlock(res || {})) toast(msg, "error");
+      finishScan();
+    }
+  }
+
+  async function stopScan() {
+    try { await window.pywebview.api.catalog_stop_scan(); } catch (e) { console.error(e); }
+  }
+
+  function finishScan() {
+    cstate.scanning = false;
+    $("#catalog-start-btn").disabled = !cstate.source;
+    $("#catalog-pick-source").disabled = false;
+    $("#catalog-stop-btn").hidden = true;
+    updateSelectedCount();
+  }
+
+  function _openConfirmModal(nFiles, target) {
+    const msg = $("#catalogConfirmMsg");
+    if (msg) {
+      const word = nFiles === 1 ? "1 file" : `${nFiles} file`;
+      msg.textContent = `Stai per spostare ${word} in ${target}. Procedi?`;
+    }
+    $("#catalogConfirmModal").hidden = false;
+  }
+
+  function _closeConfirmModal() {
+    $("#catalogConfirmModal").hidden = true;
+  }
+
+  async function moveSelected() {
+    const paths = [...cstate.toMove];
+    if (!paths.length) return;
+    const target = _effectiveTarget();
+    if (!target) { toast("Cartella destinazione mancante", "error"); return; }
+
+    // Costruisci lista entries in ordine di selezione
+    const selectedEntries = paths
+      .map((p) => cstate.entries.get(p))
+      .filter(Boolean);
+    if (!selectedEntries.length) return;
+
+    _openConfirmModal(selectedEntries.length, target);
+
+    // Attendi conferma o annulla via bottoni
+    const proceed = await new Promise((resolve) => {
+      const yes = $("#catalogConfirmProceedBtn");
+      const no = $("#catalogConfirmCancelBtn");
+      const close1 = $("#catalogConfirmCloseBtn");
+      const cleanup = () => {
+        yes.removeEventListener("click", onYes);
+        no.removeEventListener("click", onNo);
+        close1.removeEventListener("click", onNo);
+      };
+      const onYes = () => { cleanup(); _closeConfirmModal(); resolve(true); };
+      const onNo = () => { cleanup(); _closeConfirmModal(); resolve(false); };
+      yes.addEventListener("click", onYes);
+      no.addEventListener("click", onNo);
+      close1.addEventListener("click", onNo);
+    });
+    if (!proceed) return;
+
+    const btn = $("#catalog-move-btn");
+    btn.disabled = true;
+    let res;
+    try {
+      res = await window.pywebview.api.catalog_move_files(selectedEntries, target);
+    } catch (e) {
+      toast("Errore: " + ((e && e.message) || e), "error");
+      btn.disabled = false;
+      return;
+    }
+    if (!res || !res.ok) {
+      toast((res && res.error) || "Errore spostamento", "error");
+      btn.disabled = false;
+      return;
+    }
+
+    // Rimuovi dalla tabella le entry spostate (usando operations.src)
+    const moved = new Set((res.operations || []).map((o) => o.src));
+    const body = $("#catalog-table-body");
+    moved.forEach((p) => {
+      cstate.entries.delete(p);
+      cstate.toMove.delete(p);
+      if (body) {
+        const row = body.querySelector(`tr[data-path="${CSS.escape(p)}"]`);
+        if (row) row.remove();
+      }
+    });
+    _updateSummary();
+    updateSelectedCount();
+    const wrap = $("#catalog-table-wrap");
+    if (wrap && cstate.entries.size === 0) wrap.hidden = true;
+
+    const okN = res.moved || 0;
+    const failN = res.failed_count || 0;
+    if (failN > 0) {
+      toast(`${okN} spostati, ${failN} falliti`, "error");
+    } else {
+      toast(`${okN} file organizzati`, "success");
+    }
+  }
+
+  async function init() {
+    // Bind eventi
+    $("#catalog-pick-source").addEventListener("click", pickSource);
+    $("#catalog-pick-target").addEventListener("click", pickTarget);
+    $("#catalog-clear-target").addEventListener("click", clearTarget);
+    $("#catalog-start-btn").addEventListener("click", startScan);
+    $("#catalog-stop-btn").addEventListener("click", stopScan);
+    $("#catalog-move-btn").addEventListener("click", moveSelected);
+    $("#catalog-recursive").addEventListener("change", (e) => {
+      cstate.recursive = e.target.checked;
+    });
+    $("#catalog-select-all").addEventListener("change", (e) => {
+      const on = e.target.checked;
+      const checks = $$("#catalog-table-body .catalog-check");
+      cstate.toMove.clear();
+      checks.forEach((cb) => {
+        cb.checked = on;
+        if (on) {
+          const row = cb.closest("tr");
+          if (row && row.dataset.path) cstate.toMove.add(row.dataset.path);
+        }
+      });
+      updateSelectedCount();
+    });
+
+    // Ripristina ultimo state da config
+    const cfg = state.config || {};
+    if (cfg.catalog_last_source) {
+      cstate.source = cfg.catalog_last_source;
+      $("#catalog-source-display").textContent = cfg.catalog_last_source;
+      $("#catalog-start-btn").disabled = false;
+    }
+    if (cfg.catalog_last_target) {
+      cstate.target = cfg.catalog_last_target;
+    }
+    if (typeof cfg.catalog_recursive === "boolean") {
+      $("#catalog-recursive").checked = cfg.catalog_recursive;
+      cstate.recursive = cfg.catalog_recursive;
+    }
+    updateTargetDisplay();
+
+    // Bridge handlers
+    bridgeHandlers["catalog:progress"] = (p) => {
+      if (!p) return;
+      if (typeof p.overall === "number") {
+        const pct = Math.round(p.overall * 100);
+        $("#catalogProgressFill").style.width = pct + "%";
+        $("#catalogPercent").textContent = pct + "%";
+      }
+      if (typeof p.idx === "number" && typeof p.total === "number" && p.total > 0) {
+        const status = p.status || "";
+        let label;
+        if (status === "computing") label = `File ${p.idx}/${p.total} · fingerprint`;
+        else if (status === "lookup") label = `File ${p.idx}/${p.total} · AcoustID`;
+        else if (status === "completed") label = `Completato: ${p.total} file`;
+        else if (status === "stopped") label = "Interrotta";
+        else if (status === "error") label = `File ${p.idx}/${p.total} · errore`;
+        else label = `File ${p.idx}/${p.total}`;
+        $("#catalogCounter").textContent = label;
+      }
+    };
+
+    bridgeHandlers["catalog:entry"] = (entry) => {
+      _upsertEntry(entry);
+      setStatus(`Elaborati ${cstate.entries.size} file...`, "loading");
+    };
+
+    bridgeHandlers["catalog:log"] = (_op) => {
+      // Log dettagliato gia' appeso via il canale "log" dal backend.
+      // Handler dedicato riservato per estensioni future (es. undo).
+    };
+
+    bridgeHandlers["catalog:done"] = (p) => {
+      // Se lo streaming non ha popolato nulla (raro, es. errore), usa
+      // p.entries come fallback.
+      if (cstate.entries.size === 0 && p && Array.isArray(p.entries)) {
+        p.entries.forEach(_upsertEntry);
+      }
+      if (p && p.ok === false) {
+        setStatus(p.error || "Errore scansione", "error");
+      } else if (cstate.entries.size === 0) {
+        setStatus("Nessun file audio trovato", "ok");
+      } else {
+        const matched = (p && p.n_matched) || 0;
+        const total = (p && p.n_total) || cstate.entries.size;
+        setStatus(`Scansione completata · ${matched}/${total} identificati`, "ok");
       }
       finishScan();
     };
