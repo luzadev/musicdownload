@@ -29,7 +29,7 @@ BUILD_DIR = ROOT / "build"
 DIST_DIR = ROOT / "dist"
 BUNDLE_DIR = ROOT / "bundle_bin"
 
-YTDLP_URL = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe"
+YTDLP_URL = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp.exe"
 FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
 FPCALC_URL = ("https://github.com/acoustid/chromaprint/releases/download/"
               "v1.5.1/chromaprint-fpcalc-1.5.1-windows-x86_64.zip")
@@ -43,13 +43,11 @@ def log(msg):
 # 1. Scarica yt-dlp.exe
 # =========================================================================
 def download_ytdlp():
+    """Scarica sempre il nightly fresco: la stable resta indietro di
+    3-4 settimane rispetto alle rotture API YouTube."""
     dest = BUNDLE_DIR / "yt-dlp.exe"
-    if dest.exists():
-        log(f"yt-dlp.exe gia presente: {dest}")
-        return dest
-
-    log(f"Scarico yt-dlp.exe ...")
     BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
+    log(f"Scarico yt-dlp.exe nightly ...")
     urllib.request.urlretrieve(YTDLP_URL, dest)
     log(f"yt-dlp.exe scaricato ({dest.stat().st_size // 1024 // 1024} MB)")
     return dest

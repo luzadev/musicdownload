@@ -39,21 +39,23 @@ def log(msg):
 # 1. Scarica yt-dlp standalone
 # =========================================================================
 def download_ytdlp():
-    """Scarica il binario standalone di yt-dlp per macOS."""
+    """Scarica il binario standalone di yt-dlp per macOS.
+
+    Usa il NIGHTLY channel invece dello stable perche' YouTube rompe le
+    API ogni 1-2 settimane e la stable resta indietro di 3-4 settimane
+    tipicamente. La nightly esce quasi ogni giorno con i fix.
+    Sempre re-download: garantisce che ogni build imbarca yt-dlp fresco.
+    """
     arch = platform.machine()  # arm64 o x86_64
     if arch == "arm64":
-        url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos"
+        url = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp_macos"
     else:
-        url = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_macos_legacy"
+        url = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp_macos_legacy"
 
     dest = BUNDLE_DIR / "yt-dlp"
-    if dest.exists():
-        log(f"yt-dlp gia presente: {dest}")
-        return dest
-
-    log(f"Scarico yt-dlp da {url} ...")
     BUNDLE_DIR.mkdir(parents=True, exist_ok=True)
 
+    log(f"Scarico yt-dlp nightly da {url} ...")
     # Usa curl perche urllib di Python 3.8 ha problemi SSL su macOS
     subprocess.run(
         ["curl", "-L", "-o", str(dest), url],
