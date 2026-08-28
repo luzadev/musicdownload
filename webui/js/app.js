@@ -411,6 +411,7 @@ const logEls = {
   dedup: () => $("#dedup-log"),
   catalog: () => $("#catalog-log"),
   flatten: () => $("#flatten-log"),
+  charts: () => $("#charts-log"),
 };
 
 function classifyLog(msg) {
@@ -542,6 +543,9 @@ async function init() {
   // Cataloga tab (AcoustID -> <Anno>/<Genere>/)
   await CatalogUI.init();
   await FlattenUI.init();
+
+  // Charts tab (iTunes / Spotify / M2O / Last.fm)
+  await ChartsUI.init();
 }
 
 async function refreshRecDevices() {
@@ -3765,6 +3769,360 @@ const FlattenUI = (() => {
       }
       finishFlatten();
     };
+  }
+
+  return { init };
+})();
+
+// ============================================================
+// ChartsUI — classifiche iTunes / Spotify / M2O / Last.fm
+// ============================================================
+const ChartsUI = (() => {
+  const cs = {
+    source: "itunes",
+    country: "it",
+    playlist: "top50_global",
+    decade: "90s",
+    genre: "dance",
+    entries: [],
+    selected: new Set(), // Set di rank (int)
+    fetching: false,
+  };
+
+  function setStatus(text, kind) {
+    const el = $("#charts-status");
+    if (!el) return;
+    el.textContent = text || "";
+    el.className = "beatport-status" + (kind ? " " + kind : "");
+  }
+
+  function _showFiltersFor(source) {
+    const map = {
+      itunes: "#charts-filters-itunes",
+      spotify: "#charts-filters-spotify",
+      m2o: "#charts-filters-m2o",
+      lastfm: "#charts-filters-lastfm",
+    };
+    Object.values(map).forEach((sel) => {
+      const el = $(sel);
+      if (el) el.hidden = true;
+    });
+    const activeEl = $(map[source]);
+    if (activeEl) activeEl.hidden = false;
+  }
+
+  function _updateSelectedCount() {
+    const n = cs.selected.size;
+    const cnt = $("#charts-selected-count");
+    if (cnt) {
+      cnt.textContent = n === 1
+        ? "1 brano selezionato"
+        : `${n} brani selezionati`;
+    }
+    const btn = $("#charts-add-queue-btn");
+    if (btn) {
+      btn.disabled = n === 0 || cs.fetching;
+      const suffix = n > 0
+        ? ` Aggiungi ${n} alla coda Scarica`
+        : " Aggiungi alla coda Scarica";
+      btn.innerHTML = `<span class="ico">➕</span>${suffix}`;
+    }
+    const bar = $("#charts-footer-bar");
+    if (bar) bar.hidden = cs.entries.length === 0;
+  }
+
+  function _updateSummary() {
+    const line = $("#charts-summary-line");
+    if (!line) return;
+    const n = cs.entries.length;
+    if (n === 0) {
+      line.textContent = "";
+      return;
+    }
+    const labelBySource = {
+      itunes: "iTunes",
+      spotify: "Spotify Charts",
+      m2o: "M2O Chart",
+      lastfm: "Last.fm",
+    };
+    const src = labelBySource[cs.source] || cs.source;
+    line.textContent = `${n} brani da ${src}`;
+  }
+
+  function _fmtPopularity(entry) {
+    if (entry.popularity === null || entry.popularity === undefined || entry.popularity === "") {
+      return String(entry.rank || "—");
+    }
+    const n = Number(entry.popularity);
+    if (!isFinite(n)) return String(entry.popularity);
+    if (n >= 1000) {
+      // Formatta grandi numeri con separatore
+      return n.toLocaleString();
+    }
+    return String(n);
+  }
+
+  function _renderRow(entry) {
+    const tr = document.createElement("tr");
+    tr.dataset.rank = String(entry.rank);
+
+    // Checkbox
+    const tdCheck = document.createElement("td");
+    tdCheck.className = "charts-col-check";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.className = "charts-check";
+    cb.checked = cs.selected.has(entry.rank);
+    cb.addEventListener("change", () => {
+      if (cb.checked) cs.selected.add(entry.rank);
+      else cs.selected.delete(entry.rank);
+      _updateSelectedCount();
+    });
+    tdCheck.appendChild(cb);
+    tr.appendChild(tdCheck);
+
+    // Rank
+    const tdRank = document.createElement("td");
+    tdRank.className = "charts-col-rank";
+    tdRank.textContent = String(entry.rank || "—");
+    tr.appendChild(tdRank);
+
+    // Artist
+    const tdArtist = document.createElement("td");
+    tdArtist.className = "charts-col-artist";
+    tdArtist.textContent = entry.artist || "—";
+    tdArtist.title = entry.artist || "";
+    tr.appendChild(tdArtist);
+
+    // Title
+    const tdTitle = document.createElement("td");
+    tdTitle.className = "charts-col-title";
+    tdTitle.textContent = entry.title || "—";
+    tdTitle.title = entry.title || "";
+    tr.appendChild(tdTitle);
+
+    // Album
+    const tdAlbum = document.createElement("td");
+    tdAlbum.className = "charts-col-album";
+    tdAlbum.textContent = entry.album || "—";
+    tdAlbum.title = entry.album || "";
+    tr.appendChild(tdAlbum);
+
+    // Popularity
+    const tdPop = document.createElement("td");
+    tdPop.className = "charts-col-pop";
+    tdPop.textContent = _fmtPopularity(entry);
+    tr.appendChild(tdPop);
+
+    return tr;
+  }
+
+  function _renderTable() {
+    const body = $("#charts-table-body");
+    const card = $("#charts-results-card");
+    if (!body || !card) return;
+    body.innerHTML = "";
+    if (cs.entries.length === 0) {
+      card.hidden = true;
+      const bar = $("#charts-footer-bar");
+      if (bar) bar.hidden = true;
+      return;
+    }
+    for (const entry of cs.entries) {
+      body.appendChild(_renderRow(entry));
+    }
+    card.hidden = false;
+    _updateSummary();
+    _updateSelectedCount();
+  }
+
+  function _params() {
+    if (cs.source === "itunes") return { country: cs.country };
+    if (cs.source === "spotify") return { playlist_key: cs.playlist };
+    if (cs.source === "m2o") return {};
+    if (cs.source === "lastfm") return { decade: cs.decade, genre: cs.genre };
+    return {};
+  }
+
+  async function doFetch() {
+    if (cs.fetching) return;
+    cs.fetching = true;
+    cs.entries = [];
+    cs.selected.clear();
+    _renderTable();
+
+    const btn = $("#charts-fetch-btn");
+    if (btn) btn.disabled = true;
+    setStatus("Caricamento classifica…", "loading");
+
+    const force = $("#charts-force")?.checked || false;
+    const payload = { source: cs.source, force, ...(_params()) };
+
+    let res;
+    try {
+      res = await window.pywebview.api.charts_fetch(payload);
+    } catch (e) {
+      setStatus("Errore: " + ((e && e.message) || e), "error");
+      cs.fetching = false;
+      if (btn) btn.disabled = false;
+      return;
+    }
+    cs.fetching = false;
+    if (btn) btn.disabled = false;
+
+    if (!res || !res.ok) {
+      const msg = (res && res.error) || "Impossibile caricare la classifica";
+      setStatus(msg, "error");
+      toast(msg, "error");
+      return;
+    }
+
+    cs.entries = Array.isArray(res.entries) ? res.entries : [];
+    _renderTable();
+
+    if (cs.entries.length === 0) {
+      setStatus("Nessun risultato. Prova a cambiare filtri o sorgente.", "ok");
+    } else {
+      setStatus(`${cs.entries.length} brani ricevuti`, "ok");
+    }
+  }
+
+  async function addToQueue() {
+    if (cs.selected.size === 0) return;
+    const rankSet = cs.selected;
+    const selectedEntries = cs.entries
+      .filter((e) => rankSet.has(e.rank))
+      .map((e) => ({ artist: e.artist, title: e.title }));
+    if (selectedEntries.length === 0) return;
+
+    let res;
+    try {
+      res = await window.pywebview.api.charts_add_to_queue(selectedEntries);
+    } catch (e) {
+      toast("Errore: " + ((e && e.message) || e), "error");
+      return;
+    }
+    if (!res || !res.ok) {
+      toast((res && res.error) || "Errore aggiunta", "error");
+      return;
+    }
+    // Il bridge emette `charts:add_to_queue` che poi popola la tab Scarica.
+    // Reset selezione qui.
+    cs.selected.clear();
+    // Deseleziona checkbox visibili
+    $$("#charts-table-body .charts-check").forEach((cb) => { cb.checked = false; });
+    const master = $("#charts-select-all");
+    if (master) master.checked = false;
+    _updateSelectedCount();
+  }
+
+  function _selectAll(on) {
+    cs.selected.clear();
+    if (on) {
+      for (const e of cs.entries) cs.selected.add(e.rank);
+    }
+    $$("#charts-table-body .charts-check").forEach((cb) => { cb.checked = on; });
+    const master = $("#charts-select-all");
+    if (master) master.checked = on;
+    _updateSelectedCount();
+  }
+
+  async function init() {
+    // Ripristina scelta da config
+    const cfg = state.config || {};
+    cs.source = cfg.charts_last_source || "itunes";
+    cs.country = cfg.charts_itunes_country || "it";
+    cs.playlist = cfg.charts_spotify_playlist || "top50_global";
+    cs.decade = cfg.charts_lastfm_decade || "90s";
+    cs.genre = cfg.charts_lastfm_genre || "dance";
+
+    // Applica valori ai controlli
+    const radio = document.querySelector(`input[name="charts-source"][value="${cs.source}"]`);
+    if (radio) radio.checked = true;
+    else {
+      // Fallback: seleziona iTunes
+      const fallback = document.querySelector('input[name="charts-source"][value="itunes"]');
+      if (fallback) fallback.checked = true;
+      cs.source = "itunes";
+    }
+    _showFiltersFor(cs.source);
+
+    if ($("#charts-itunes-country")) $("#charts-itunes-country").value = cs.country;
+    if ($("#charts-spotify-playlist")) $("#charts-spotify-playlist").value = cs.playlist;
+    if ($("#charts-lastfm-decade")) $("#charts-lastfm-decade").value = cs.decade;
+    if ($("#charts-lastfm-genre")) $("#charts-lastfm-genre").value = cs.genre;
+
+    // Bind eventi source radio
+    document.querySelectorAll('input[name="charts-source"]').forEach((r) => {
+      r.addEventListener("change", () => {
+        if (!r.checked) return;
+        cs.source = r.value;
+        _showFiltersFor(cs.source);
+      });
+    });
+
+    // Bind filtri
+    $("#charts-itunes-country")?.addEventListener("change", (e) => {
+      cs.country = e.target.value;
+    });
+    $("#charts-spotify-playlist")?.addEventListener("change", (e) => {
+      cs.playlist = e.target.value;
+    });
+    $("#charts-lastfm-decade")?.addEventListener("change", (e) => {
+      cs.decade = e.target.value;
+    });
+    $("#charts-lastfm-genre")?.addEventListener("change", (e) => {
+      cs.genre = e.target.value;
+    });
+
+    // Fetch, seleziona, aggiungi
+    $("#charts-fetch-btn")?.addEventListener("click", doFetch);
+    $("#charts-add-queue-btn")?.addEventListener("click", addToQueue);
+    $("#charts-select-all-btn")?.addEventListener("click", () => _selectAll(true));
+    $("#charts-deselect-all-btn")?.addEventListener("click", () => _selectAll(false));
+    $("#charts-select-all")?.addEventListener("change", (e) => _selectAll(!!e.target.checked));
+
+    // Bridge handler: quando l'utente aggiunge alla coda, popola la tab Scarica.
+    bridgeHandlers["charts:add_to_queue"] = (p) => {
+      if (!p) return;
+      const tracks = Array.isArray(p.tracks) ? p.tracks : null;
+      const text = typeof p.text === "string" ? p.text : "";
+      const count = Number(p.count) || (tracks ? tracks.length : 0);
+
+      // Popola state.loaded come "tracks" (stesso pattern del "Carica lista")
+      if (tracks && tracks.length) {
+        state.loaded = {
+          ok: true,
+          kind: "tracks",
+          tracks: tracks,
+          count: tracks.length,
+          name: "charts",
+        };
+        // Aggiorna il campo URL e il badge sulla tab Scarica
+        const urlInput = $("#urlInput");
+        if (urlInput) {
+          urlInput.value = "[Charts] " + count + " brani";
+        }
+        const badge = $("#urlListBadge");
+        if (badge) {
+          badge.textContent = `· ${count} tracce`;
+          badge.hidden = false;
+        }
+        appendLog("download", `[INFO] Caricati ${count} brani dalla tab Charts`);
+      } else if (text) {
+        // Fallback: nessun tracks strutturati, usa il testo grezzo
+        const urlInput = $("#urlInput");
+        if (urlInput) {
+          urlInput.value = urlInput.value ? urlInput.value + "\n" + text : text;
+        }
+      }
+
+      // Naviga alla tab Scarica
+      showView("download");
+      toast(`${count} brani aggiunti alla coda Scarica`, "success");
+    };
+
+    _updateSelectedCount();
   }
 
   return { init };

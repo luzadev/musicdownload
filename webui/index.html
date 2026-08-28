@@ -61,6 +61,10 @@
           <span class="nav-icon">📤</span>
           <span>Appiattisci</span>
         </button>
+        <button class="nav-item" data-view="charts" data-feature="audio">
+          <span class="nav-icon">📊</span>
+          <span>Charts</span>
+        </button>
         <button class="nav-item" data-view="upgrade" data-feature="upgrade">
           <span class="nav-icon">⚡</span>
           <span>Upgrade</span>
@@ -1494,6 +1498,170 @@
         <h2 class="section-label">Log</h2>
         <div class="card log-card">
           <div class="log" id="flatten-log"></div>
+        </div>
+      </section>
+
+      <!-- ===== VIEW: CHARTS ===== -->
+      <section class="view" id="view-charts">
+        <header class="hero hero-indigo">
+          <div class="hero-content">
+            <div class="hero-eyebrow indigo">CHARTS</div>
+            <h1 class="hero-title">Esplora le classifiche</h1>
+            <p class="hero-subtitle">Del momento (iTunes/Spotify), dance italiana (M2O) o storiche per genere (Last.fm) — aggiungi in un click alla coda Scarica.</p>
+          </div>
+          <div class="hero-deco">📊</div>
+        </header>
+
+        <h2 class="section-label">Sorgente</h2>
+        <div class="card">
+          <div class="charts-source-row">
+            <label class="charts-radio">
+              <input type="radio" name="charts-source" value="itunes" checked />
+              <span>🎵 Del momento (iTunes)</span>
+            </label>
+            <label class="charts-radio">
+              <input type="radio" name="charts-source" value="spotify" />
+              <span>🟢 Spotify Charts</span>
+            </label>
+            <label class="charts-radio">
+              <input type="radio" name="charts-source" value="m2o" />
+              <span>🔴 M2O Chart (dance italiana)</span>
+            </label>
+            <label class="charts-radio">
+              <input type="radio" name="charts-source" value="lastfm" />
+              <span>📻 Storiche per genere (Last.fm)</span>
+            </label>
+          </div>
+
+          <div class="charts-filters" id="charts-filters-itunes">
+            <div class="field inline">
+              <label class="field-label">Paese</label>
+              <select id="charts-itunes-country" class="input pill input-sm">
+                <option value="it">🇮🇹 Italia</option>
+                <option value="us">🇺🇸 USA</option>
+                <option value="gb">🇬🇧 UK</option>
+                <option value="ww">🌐 Mondo</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="charts-filters" id="charts-filters-spotify" hidden>
+            <div class="field inline">
+              <label class="field-label">Playlist chart</label>
+              <select id="charts-spotify-playlist" class="input pill input-sm">
+                <option value="top50_global">Top 50 Global</option>
+                <option value="top50_italy">Top 50 Italy</option>
+                <option value="top50_usa">Top 50 USA</option>
+                <option value="top50_uk">Top 50 UK</option>
+                <option value="viral50_global">Viral 50 Global</option>
+                <option value="viral50_italy">Viral 50 Italy</option>
+              </select>
+            </div>
+            <div class="hint" style="margin-top:8px;">
+              <span class="hint-ico">ⓘ</span>
+              <div>
+                Le playlist Spotify richiedono le tue credenziali API (Impostazioni → Spotify).
+                Senza credenziali questa sorgente resta vuota.
+              </div>
+            </div>
+          </div>
+
+          <div class="charts-filters" id="charts-filters-m2o" hidden>
+            <div class="hint">
+              <span class="hint-ico">ⓘ</span>
+              <div>
+                Chart dance italiana settimanale di M2O. Nessun filtro: premi "Aggiorna" per caricare la classifica corrente.
+              </div>
+            </div>
+          </div>
+
+          <div class="charts-filters" id="charts-filters-lastfm" hidden>
+            <div class="field inline">
+              <label class="field-label">Decade</label>
+              <select id="charts-lastfm-decade" class="input pill input-sm">
+                <option value="">Nessuna</option>
+                <option value="70s">Anni 70</option>
+                <option value="80s">Anni 80</option>
+                <option value="90s" selected>Anni 90</option>
+                <option value="2000s">Anni 2000</option>
+                <option value="2010s">Anni 2010</option>
+              </select>
+            </div>
+            <div class="field inline">
+              <label class="field-label">Genere</label>
+              <select id="charts-lastfm-genre" class="input pill input-sm">
+                <option value="">Nessuno</option>
+                <option value="pop">Pop</option>
+                <option value="rock">Rock</option>
+                <option value="dance" selected>Dance</option>
+                <option value="house">House</option>
+                <option value="hip hop">Hip Hop</option>
+                <option value="latin">Latin</option>
+                <option value="r&amp;b">R&amp;B</option>
+                <option value="italo disco">Italo Disco</option>
+                <option value="reggae">Reggae</option>
+                <option value="electronic">Electronic</option>
+              </select>
+            </div>
+            <div class="hint" style="margin-top:8px;">
+              <span class="hint-ico">ⓘ</span>
+              <div>
+                Last.fm richiede una API key: nell'app c'è una chiave demo, se non funziona
+                registrane una gratuita su <code>last.fm/api/account/create</code> e mettila nel campo
+                <code>lastfm_api_key</code> di <code>config.json</code>.
+              </div>
+            </div>
+          </div>
+
+          <div class="beatport-header" style="margin-top:14px;gap:12px;">
+            <button id="charts-fetch-btn" class="btn btn-primary pill">
+              <span class="ico">▶</span> Aggiorna classifica
+            </button>
+            <label style="display:flex;gap:6px;align-items:center;color:var(--text-2);font-size:13px;">
+              <input type="checkbox" id="charts-force" />
+              <span>Ignora cache (force refresh)</span>
+            </label>
+            <span id="charts-status" class="beatport-status"></span>
+          </div>
+        </div>
+
+        <div id="charts-results-card" class="card" hidden>
+          <div class="charts-actions-row">
+            <span id="charts-summary-line" class="catalog-summary"></span>
+            <div class="charts-actions-btns">
+              <button id="charts-select-all-btn" class="btn btn-ghost pill btn-sm">Seleziona tutti</button>
+              <button id="charts-deselect-all-btn" class="btn btn-ghost pill btn-sm">Deseleziona tutti</button>
+            </div>
+          </div>
+          <div id="charts-table-wrap" class="charts-scroll">
+            <table class="charts-table">
+              <thead>
+                <tr>
+                  <th class="charts-col-check">
+                    <input type="checkbox" id="charts-select-all" title="Seleziona/deseleziona tutti" />
+                  </th>
+                  <th class="charts-col-rank">#</th>
+                  <th class="charts-col-artist">Artista</th>
+                  <th class="charts-col-title">Titolo</th>
+                  <th class="charts-col-album">Album</th>
+                  <th class="charts-col-pop">Popolarità</th>
+                </tr>
+              </thead>
+              <tbody id="charts-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="charts-footer-bar" id="charts-footer-bar" hidden>
+          <span class="counter" id="charts-selected-count">0 brani selezionati</span>
+          <button id="charts-add-queue-btn" class="btn btn-primary pill" disabled>
+            <span class="ico">➕</span> Aggiungi alla coda Scarica
+          </button>
+        </div>
+
+        <h2 class="section-label">Log</h2>
+        <div class="card log-card">
+          <div class="log" id="charts-log"></div>
         </div>
       </section>
 

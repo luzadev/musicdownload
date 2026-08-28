@@ -2116,3 +2116,139 @@ input[type="number"]::-webkit-inner-spin-button {
   border: 1px solid var(--border);
 }
 
+/* ==================================================================
+ * Charts tab (iTunes / Spotify / M2O / Last.fm)
+ * Riusa in gran parte le classi catalog-* per stile e comportamento.
+ * ================================================================== */
+.charts-source-row {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+
+.charts-radio {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 14px;
+  color: var(--text-1);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.charts-radio:hover {
+  background: var(--bg-elev);
+}
+
+.charts-radio input[type="radio"] {
+  accent-color: var(--indigo-hover, #6366F1);
+  cursor: pointer;
+}
+
+.charts-radio input[type="radio"]:checked ~ span {
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.charts-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+  margin-top: 8px;
+}
+
+.charts-actions-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.charts-actions-btns {
+  display: flex;
+  gap: 8px;
+}
+
+.charts-scroll {
+  max-height: 55vh;
+  overflow-y: auto;
+  overflow-x: auto;
+  padding-right: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--bg-card);
+}
+
+.charts-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.charts-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--bg-card-2);
+  color: var(--text-1);
+  font-weight: 700;
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 11px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.charts-table tbody td {
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.charts-table tbody tr:hover {
+  background: var(--bg-elev);
+}
+
+.charts-col-check { width: 30px; text-align: center; }
+.charts-col-rank { width: 42px; text-align: center; font-variant-numeric: tabular-nums; color: var(--text-3); font-weight: 700; }
+.charts-col-pop  { width: 110px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-3); }
+
+.charts-check {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--indigo-hover, #6366F1);
+}
+
+.charts-footer-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-top: 12px;
+  border-radius: var(--r-md);
+  background: var(--bg-card);
+  box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.15);
+  border: 1px solid var(--border);
+}
+
