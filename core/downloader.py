@@ -247,12 +247,20 @@ def download_playlist(
                     **subprocess_flags(),
                 )
 
+            last_lines: list = []  # buffer per capire l'errore se exit != 0
             for line in _current_process.stdout:
                 if is_stopped():
                     _current_process.terminate()
                     if progress_callback:
                         progress_callback(i, total, query, "stopped", 0)
                     return
+
+                # Tieni le ultime 10 righe non-progress per il report d'errore
+                stripped = line.strip()
+                if stripped and not re.match(r"^\[download\]\s+\d", stripped):
+                    last_lines.append(stripped)
+                    if len(last_lines) > 10:
+                        last_lines.pop(0)
 
                 # Parse progress da output yt-dlp
                 pct_match = re.search(r"(\d+(?:\.\d+)?)%", line)
@@ -278,8 +286,17 @@ def download_playlist(
                 if progress_callback:
                     progress_callback(i, total, query, "done", 100)
             else:
+                # Estrai la vera causa da last_lines: cerca la riga ERROR di yt-dlp
+                err_hint = ""
+                for l in reversed(last_lines):
+                    if "ERROR" in l or "error" in l:
+                        err_hint = l[:220]
+                        break
+                if not err_hint and last_lines:
+                    err_hint = last_lines[-1][:220]
+                detail = f" — {err_hint}" if err_hint else ""
                 if progress_callback:
-                    progress_callback(i, total, query, f"error: yt-dlp exit {return_code}", 0)
+                    progress_callback(i, total, query, f"error: yt-dlp exit {return_code}{detail}", 0)
 
         except Exception as e:
             with _process_lock:
