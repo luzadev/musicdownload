@@ -49,6 +49,7 @@ from core.upgrader import (
 from core import dedup
 from core import catalog
 from core import flatten
+from core import charts
 
 
 SPOTIFY_GUIDE_TEXT = """\
@@ -2263,3 +2264,108 @@ class Api:
             "n_matched": n_matched,
             "n_unmatched": n_unmatched,
         })
+
+    # ================================================================
+    # CHARTS — classifiche musicali (iTunes / Spotify / M2O / Last.fm)
+    # ================================================================
+    def charts_fetch(self, payload: dict) -> dict:
+        """Ritorna le entry di una chart per la sorgente/params richiesti.
+
+        Payload:
+            {
+              source: "itunes" | "spotify" | "m2o" | "lastfm",
+              country?: "it"|"us"|"gb"|"ww",  # solo itunes
+              playlist_key?: str,             # solo spotify (chiave _SPOTIFY_CHARTS)
+              decade?: str,                   # solo lastfm ("" | "70s"|"80s"|...)
+              genre?: str,                    # solo lastfm ("" | pop|rock|dance|...)
+              force?: bool,                   # bypass cache
+            }
+        Persiste anche la scelta corrente in config.
+        """
+        payload = payload or {}
+        source = (payload.get("source") or "itunes").strip().lower()
+        force = bool(payload.get("force", False))
+
+        # Persist scelta corrente (best-effort, non blocca la fetch)
+        try:
+            cfg = load_config()
+            cfg["charts_last_source"] = source
+            if source == "itunes":
+                cfg["charts_itunes_country"] = (
+                    payload.get("country") or cfg.get("charts_itunes_country") or "it"
+                )
+            elif source == "lastfm":
+                cfg["charts_lastfm_decade"] = (
+                    payload.get("decade") if payload.get("decade") is not None
+                    else cfg.get("charts_lastfm_decade", "90s")
+                )
+                cfg["charts_lastfm_genre"] = (
+                    payload.get("genre") if payload.get("genre") is not None
+                    else cfg.get("charts_lastfm_genre", "dance")
+                )
+            elif source == "spotify":
+                cfg["charts_spotify_playlist"] = (
+                    payload.get("playlist_key")
+                    or cfg.get("charts_spotify_playlist")
+                    or "top50_global"
+                )
+            save_config(cfg)
+        except Exception:
+            pass
+
+        try:
+            if source == "itunes":
+                country = (payload.get("country") or "it").strip().lower() or "it"
+                entries = charts.fetch_itunes(country, force=force)
+            elif source == "lastfm":
+                decade = payload.get("decade") or ""
+                genre = payload.get("genre") or ""
+                entries = charts.fetch_lastfm(decade, genre, force=force)
+            elif source == "spotify":
+                playlist_key = (payload.get("playlist_key") or "top50_global").strip()
+                entries = charts.fetch_spotify(playlist_key, force=force)
+            elif source == "m2o":
+                entries = charts.fetch_m2o(force=force)
+            else:
+                return {"ok": False, "error": f"Sorgente sconosciuta: {source}"}
+        except Exception as e:
+            self._log("charts", f"[ERRORE] fetch {source}: {e}")
+            return {"ok": False, "error": str(e)}
+
+        self._log("charts", f"[INFO] {source}: {len(entries)} brani ricevuti")
+        return {"ok": True, "source": source, "entries": entries}
+
+    def charts_add_to_queue(self, entries: list) -> dict:
+        """Riceve una lista di entry `{artist, title}` selezionate dalla UI
+        e le converte in una tracklist compatibile con la tab Scarica.
+
+        Emette l'evento `charts:add_to_queue` col testo formattato
+        (`Artista - Titolo` una per riga) e la lista strutturata. La UI
+        popola l'input della tab Scarica e commuta view.
+        """
+        if not isinstance(entries, list):
+            return {"ok": False, "error": "entries deve essere una lista"}
+
+        tracks = []
+        lines = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            artist = (e.get("artist") or "").strip()
+            title = (e.get("title") or "").strip()
+            if not title:
+                continue
+            tracks.append({"artist": artist, "name": title})
+            if artist:
+                lines.append(f"{artist} - {title}")
+            else:
+                lines.append(title)
+
+        if not tracks:
+            return {"ok": False, "error": "Nessun brano valido selezionato"}
+
+        text = "\n".join(lines)
+        payload = {"text": text, "count": len(tracks), "tracks": tracks}
+        self._emit("charts:add_to_queue", payload)
+        self._log("charts", f"[INFO] {len(tracks)} brani inviati alla coda Scarica")
+        return {"ok": True, "count": len(tracks)}

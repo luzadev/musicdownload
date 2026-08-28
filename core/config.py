@@ -5,7 +5,7 @@ import os
 import sys
 from pathlib import Path
 
-VERSION = "v1.11.3"
+VERSION = "v1.12.0"
 
 
 APP_NAME = "MusicTools"
@@ -88,6 +88,13 @@ DEFAULTS = {
     "catalog_last_target": "",
     "catalog_recursive": True,
     "acoustid_app_key": "",  # opzionale: se vuoto usa default in core/acoustid.py
+    # ---- Charts (iTunes RSS + Last.fm + Spotify + M2O) ----
+    "charts_last_source": "itunes",          # "itunes" | "spotify" | "m2o" | "lastfm"
+    "charts_itunes_country": "it",           # "it" | "us" | "gb" | "ww"
+    "charts_lastfm_decade": "90s",           # "" | "70s" | "80s" | "90s" | "2000s" | "2010s"
+    "charts_lastfm_genre": "dance",          # "" | pop, rock, dance, ...
+    "charts_spotify_playlist": "top50_global",  # chiave in charts._SPOTIFY_CHARTS
+    "lastfm_api_key": "",                    # opzionale: override della chiave demo
     # ---- Licenza ----
     "license_key": "",          # chiave fornita all'utente via email
     "license_email": "",        # email associata all'acquisto
