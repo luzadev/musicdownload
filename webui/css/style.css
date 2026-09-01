@@ -207,6 +207,17 @@ button, input, select, textarea { font-family: inherit; font-size: inherit; }
 }
 .nav::-webkit-scrollbar-thumb:hover { background: var(--bg-input-hover); }
 
+.nav-section-label {
+  padding: 12px 14px 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-3);
+  user-select: none;
+}
+.nav-section-label:first-child { padding-top: 4px; }
+
 .nav-item {
   display: flex;
   align-items: center;
@@ -2162,6 +2173,7 @@ input[type="number"]::-webkit-inner-spin-button {
   align-items: flex-start;
   margin-top: 8px;
 }
+.charts-filters[hidden] { display: none !important; }
 
 .charts-actions-row {
   display: flex;
