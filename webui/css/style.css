@@ -578,6 +578,87 @@ input[type="number"]::-webkit-inner-spin-button {
 .path-display:empty,
 .path-display.empty { color: var(--text-3); }
 
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  background: linear-gradient(135deg, var(--purple), var(--pink));
+  color: #fff;
+  box-shadow: 0 2px 6px rgba(168, 85, 247, 0.35);
+  white-space: nowrap;
+  cursor: default;
+}
+.ai-badge[hidden] { display: none !important; }
+.ai-badge::before { content: "🤖"; }
+
+.raw-frames-details {
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--bg-card-2);
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+}
+.raw-frames-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--text-2);
+  padding: 2px 0;
+  user-select: none;
+}
+.raw-frames-details summary:hover { color: var(--text); }
+.raw-frames-details[open] summary { margin-bottom: 10px; color: var(--text); }
+.raw-frames-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.raw-frames-table th,
+.raw-frames-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--divider);
+  text-align: left;
+  vertical-align: top;
+}
+.raw-frames-table th {
+  color: var(--text-3);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 10px;
+}
+.raw-frames-table td.raw-key {
+  font-family: ui-monospace, SF Mono, Menlo, monospace;
+  color: var(--indigo-text);
+  white-space: nowrap;
+}
+.raw-frames-table td.raw-preview {
+  word-break: break-word;
+  color: var(--text);
+}
+.raw-frames-table td.raw-size {
+  text-align: right;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.raw-frames-table .kind-binary {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--amber-dim);
+  color: var(--amber-text);
+  text-transform: uppercase;
+}
+
 /* ===============================
    BUTTONS
    =============================== */

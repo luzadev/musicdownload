@@ -14,6 +14,7 @@ from mutagen import File as MutagenFile
 from mutagen.id3 import (
     ID3, ID3NoHeaderError,
     APIC, TIT2, TPE1, TPE2, TALB, TDRC, TRCK, TCON, COMM, TBPM, TKEY,
+    USLT, WOAS,
 )
 from mutagen.mp4 import MP4, MP4Cover
 from mutagen.flac import FLAC, Picture
@@ -84,12 +85,77 @@ def _text(value) -> str:
     return str(value)
 
 
+_AI_MARKERS = {
+    "suno": ["suno.com", "made with suno", "sunoai"],
+    "udio": ["udio.com", "made with udio"],
+    "riffusion": ["riffusion.com", "made with riffusion"],
+    "mubert": ["mubert.com", "made with mubert"],
+    "aiva": ["aiva.ai"],
+    "boomy": ["boomy.com", "made with boomy"],
+    "soundraw": ["soundraw.io"],
+    "loudly": ["loudly.com"],
+}
+
+
+def _detect_ai(comment: str, source_url: str, extra: str = "") -> tuple:
+    """Ritorna (is_ai: bool, source_name: str). Case-insensitive.
+    `extra` = altre stringhe da controllare (es. presenza C2PA manifest)."""
+    blob = f"{comment} {source_url} {extra}".lower()
+    for source, markers in _AI_MARKERS.items():
+        for m in markers:
+            if m in blob:
+                return True, source
+    if "c2pa" in blob:
+        return True, ""
+    return False, ""
+
+
+def _dump_id3_frames(tags) -> list:
+    """Lista compatta di tutti i frame ID3 (esclusa APIC binaria).
+    Ogni voce: {key, preview, size, kind}. Utile per audit AI-generated."""
+    out = []
+    for key in tags.keys():
+        try:
+            frame = tags[key]
+        except Exception:
+            continue
+        kind = "text"
+        preview = ""
+        size = 0
+        if key.startswith("APIC"):
+            kind = "binary"
+            preview = f"{frame.mime or 'image'} ({len(frame.data)} bytes)"
+            size = len(frame.data)
+        elif key.startswith("GEOB"):
+            kind = "binary"
+            data = getattr(frame, "data", b"") or b""
+            desc = getattr(frame, "desc", "") or ""
+            mime = getattr(frame, "mime", "") or ""
+            preview = f"{desc or mime or 'blob'} ({len(data)} bytes)"
+            size = len(data)
+        elif key.startswith("USLT"):
+            txt = getattr(frame, "text", "") or ""
+            preview = txt[:180] + ("…" if len(txt) > 180 else "")
+            size = len(txt)
+        elif key.startswith("WOAS") or key.startswith("WXXX") or key.startswith("WOAR"):
+            preview = getattr(frame, "url", "") or str(frame)
+            size = len(preview)
+        else:
+            txt = str(frame)
+            preview = txt[:180] + ("…" if len(txt) > 180 else "")
+            size = len(txt)
+        out.append({"key": key, "preview": preview, "size": size, "kind": kind})
+    return out
+
+
 def _read_mp3(path: str, result: dict) -> dict:
     result["format"] = "MP3"
     try:
         tags = ID3(path)
     except ID3NoHeaderError:
         return result
+
+    result["raw_frames"] = _dump_id3_frames(tags)
 
     result["title"] = _text(tags.get("TIT2"))
     result["artist"] = _text(tags.get("TPE1"))
@@ -100,10 +166,17 @@ def _read_mp3(path: str, result: dict) -> dict:
     result["genre"] = _text(tags.get("TCON"))
     result["bpm"] = _text(tags.get("TBPM"))
     result["key"] = _text(tags.get("TKEY"))
+    result["source_url"] = _text(tags.get("WOAS"))
 
     for k in tags.keys():
         if k.startswith("COMM"):
             result["comment"] = _text(tags[k])
+            break
+
+    for k in tags.keys():
+        if k.startswith("USLT"):
+            frame = tags[k]
+            result["lyrics"] = getattr(frame, "text", "") or ""
             break
 
     for k in tags.keys():
@@ -113,13 +186,44 @@ def _read_mp3(path: str, result: dict) -> dict:
             result["cover_mime"] = apic.mime or "image/jpeg"
             break
 
+    # AI detection: C2PA manifest (GEOB frame) o markers testuali
+    has_c2pa = any("c2pa" in k.lower() for k in tags.keys())
+    result["ai_generated"], result["ai_source"] = _detect_ai(
+        result["comment"], result["source_url"], "c2pa" if has_c2pa else "",
+    )
+
     return result
+
+
+def _dump_mp4_atoms(tags) -> list:
+    out = []
+    for key, val in tags.items():
+        preview = ""
+        kind = "text"
+        size = 0
+        if key == "covr":
+            kind = "binary"
+            data = bytes(val[0]) if val else b""
+            preview = f"cover ({len(data)} bytes)"
+            size = len(data)
+        else:
+            try:
+                preview = str(val[0] if isinstance(val, list) and val else val)
+            except Exception:
+                preview = "<binary>"
+            if isinstance(preview, str):
+                size = len(preview)
+                if len(preview) > 180:
+                    preview = preview[:180] + "…"
+        out.append({"key": key, "preview": preview, "size": size, "kind": kind})
+    return out
 
 
 def _read_mp4(path: str, result: dict) -> dict:
     result["format"] = "M4A/MP4"
     m = MP4(path)
     tags = m.tags or {}
+    result["raw_frames"] = _dump_mp4_atoms(tags)
     result["title"] = _text(tags.get("\xa9nam"))
     result["artist"] = _text(tags.get("\xa9ART"))
     result["album_artist"] = _text(tags.get("aART"))
@@ -132,12 +236,24 @@ def _read_mp4(path: str, result: dict) -> dict:
     result["genre"] = _text(tags.get("\xa9gen"))
     result["comment"] = _text(tags.get("\xa9cmt"))
     result["bpm"] = _text(tags.get("tmpo"))
+    result["lyrics"] = _text(tags.get("\xa9lyr"))
+    # M4A non ha WOAS: cerchiamo in freeform ----:com.apple.iTunes:URL
+    for k in tags.keys():
+        if isinstance(k, str) and k.startswith("----") and "URL" in k.upper():
+            v = tags[k]
+            if v:
+                result["source_url"] = v[0].decode("utf-8", errors="ignore") if isinstance(v[0], bytes) else str(v[0])
+                break
 
     covers = tags.get("covr")
     if covers:
         c = covers[0]
         result["cover_base64"] = base64.b64encode(bytes(c)).decode("ascii")
         result["cover_mime"] = "image/jpeg" if c.imageformat == MP4Cover.FORMAT_JPEG else "image/png"
+
+    result["ai_generated"], result["ai_source"] = _detect_ai(
+        result["comment"], result["source_url"],
+    )
     return result
 
 
@@ -292,8 +408,13 @@ def read_metadata(path: str) -> dict:
         "bpm": "", "key": "",
         "duration": 0, "bitrate": 0,
         "cover_base64": "", "cover_mime": "",
+        "lyrics": "",           # USLT (MP3), \xa9lyr (M4A), UNSYNCEDLYRICS (FLAC)
+        "source_url": "",       # WOAS (MP3), custom (altri) — es. URL Suno
+        "ai_generated": False,  # True se rilevato marker AI (C2PA, "made with suno"...)
+        "ai_source": "",        # es. "suno", "udio", "riffusion" — sorgente dedotta
         "where_from": _read_where_from(str(p)),
         "is_macos": sys.platform == "darwin",
+        "raw_frames": [],       # list of {key, preview, size, kind} — tutti i frame ID3/atomi
     }
 
     audio = MutagenFile(str(p))
@@ -346,6 +467,22 @@ def _write_mp3(path: str, data: dict, cover_path: Optional[str], remove_cover: b
     if comment:
         tags.add(COMM(encoding=3, lang="ita", desc="", text=comment))
 
+    # Lyrics (USLT). Rimuovi tutti gli USLT esistenti, poi (ri)crea se non vuoto
+    for k in list(tags.keys()):
+        if k.startswith("USLT"):
+            del tags[k]
+    lyrics = data.get("lyrics", "")
+    if lyrics:
+        tags.add(USLT(encoding=3, lang="eng", desc="", text=lyrics))
+
+    # Source URL (WOAS)
+    if "source_url" in data:
+        src = data.get("source_url", "")
+        if "WOAS" in tags:
+            del tags["WOAS"]
+        if src:
+            tags.add(WOAS(url=src))
+
     # Cover
     if remove_cover or cover_path:
         for k in list(tags.keys()):
@@ -379,6 +516,7 @@ def _write_mp4(path: str, data: dict, cover_path: Optional[str], remove_cover: b
     set_or_del("\xa9day", data.get("year", ""))
     set_or_del("\xa9gen", data.get("genre", ""))
     set_or_del("\xa9cmt", data.get("comment", ""))
+    set_or_del("\xa9lyr", data.get("lyrics", ""))
 
     track = data.get("track", "")
     if track:
@@ -518,3 +656,38 @@ def write_metadata(path: str, data: dict, cover_path: Optional[str] = None,
     # macOS extended attribute: kMDItemWhereFroms (lista URL/origini)
     if "where_from" in data:
         _write_where_from(path, data.get("where_from") or [])
+
+
+def remove_frames(path: str, frame_keys: list) -> int:
+    """Rimuove specifici frame ID3 (MP3) o atomi (MP4) dal file.
+    Ritorna il numero di frame rimossi. `frame_keys` sono le chiavi
+    esatte così come tornano da `raw_frames` (es. "TXXX:comment",
+    "GEOB:c2pa manifest store", "\xa9lyr")."""
+    if not frame_keys:
+        return 0
+    ext = Path(path).suffix.lower()
+    removed = 0
+    if ext == ".mp3":
+        try:
+            tags = ID3(path)
+        except ID3NoHeaderError:
+            return 0
+        for key in frame_keys:
+            if key in tags:
+                del tags[key]
+                removed += 1
+        if removed:
+            tags.save(path)
+    elif ext in (".m4a", ".mp4", ".aac"):
+        m = MP4(path)
+        if m.tags is None:
+            return 0
+        for key in frame_keys:
+            if key in m.tags:
+                del m.tags[key]
+                removed += 1
+        if removed:
+            m.save()
+    else:
+        raise ValueError(f"Rimozione frame non supportata per: {ext}")
+    return removed

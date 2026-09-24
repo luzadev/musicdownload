@@ -444,6 +444,7 @@
           <div class="row">
             <button class="btn btn-amber pill" id="metaPickBtn">📂 Apri file audio</button>
             <div class="path-display" id="metaPathDisplay">Nessun file selezionato</div>
+            <span id="metaAiBadge" class="ai-badge" hidden title="Brano generato con AI"></span>
           </div>
           <div class="meta-info" id="metaInfo" hidden></div>
         </div>
@@ -492,6 +493,42 @@
                 <label class="field-label">Commento</label>
                 <textarea id="metaComment" class="input textarea" rows="3"></textarea>
               </div>
+              <div class="field full">
+                <label class="field-label">URL sorgente (WOAS)</label>
+                <input type="text" id="metaSourceUrl" class="input pill" placeholder="https://...">
+                <div class="cover-hint">Link alla pagina d'origine del brano (es. Suno, YouTube, SoundCloud). Sopravvive alle copie del file.</div>
+              </div>
+              <div class="field full">
+                <label class="field-label">Testo / Prompt (USLT)</label>
+                <textarea id="metaLyrics" class="input textarea" rows="8" placeholder="Lyrics del brano o prompt AI utilizzato..."></textarea>
+                <div class="cover-hint">Testo o prompt strutturato. Suno lo compila automaticamente al momento della generazione.</div>
+              </div>
+              <details class="field full raw-frames-details">
+                <summary>Metadati avanzati (tutti i frame ID3 grezzi)</summary>
+                <table class="raw-frames-table" id="metaRawFrames">
+                  <thead>
+                    <tr>
+                      <th style="width:32px;"><input type="checkbox" id="metaRawSelectAll" title="Seleziona tutti"></th>
+                      <th>Frame</th>
+                      <th>Tipo</th>
+                      <th>Contenuto</th>
+                      <th style="text-align:right;">Bytes</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+                <div class="row" style="margin-top:10px;justify-content:space-between;align-items:center;">
+                  <span id="metaRawSelectedCount" style="font-size:12px;color:var(--text-3);">0 selezionati</span>
+                  <button id="metaRawRemoveBtn" class="btn btn-danger pill btn-sm" disabled>
+                    🗑 Rimuovi selezionati
+                  </button>
+                </div>
+                <div class="cover-hint" style="margin-top:8px;">
+                  I frame standard (TIT2 titolo, TPE1 artista, TALB album, APIC cover…) si gestiscono con i campi sopra.
+                  Qui rimuovi frame custom come TXXX, GEOB (C2PA), USLT (lyrics) o COMM extra.
+                </div>
+              </details>
+
               <div class="field full" id="metaWhereFromField" hidden>
                 <label class="field-label">
                   Origine (macOS · kMDItemWhereFroms)

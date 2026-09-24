@@ -1147,6 +1147,51 @@ function populateMetaForm(d) {
   $("#metaBpm").value = d.bpm || "";
   $("#metaKey").value = d.key || "";
   $("#metaComment").value = d.comment || "";
+  $("#metaSourceUrl").value = d.source_url || "";
+  $("#metaLyrics").value = d.lyrics || "";
+
+  // Raw frames table
+  const rawBody = document.querySelector("#metaRawFrames tbody");
+  if (rawBody) {
+    // Frame gestiti dai campi standard: no checkbox (li rimuovi svuotando il campo)
+    const PROTECTED_MP3 = /^(TIT2|TPE1|TPE2|TALB|TDRC|TRCK|TCON|TBPM|TKEY|APIC)/;
+    const PROTECTED_MP4 = new Set(["\xa9nam","\xa9ART","aART","\xa9alb","\xa9day","trkn","\xa9gen","tmpo","covr"]);
+    rawBody.innerHTML = "";
+    (d.raw_frames || []).forEach((f) => {
+      const tr = document.createElement("tr");
+      const kindHtml = f.kind === "binary"
+        ? '<span class="kind-binary">binary</span>'
+        : '<span style="color:var(--text-3);font-size:11px;">text</span>';
+      const isProtected = PROTECTED_MP3.test(f.key) || PROTECTED_MP4.has(f.key);
+      const cbHtml = isProtected
+        ? '<span title="Frame standard — gestito dai campi sopra" style="color:var(--text-3);font-size:14px;">🔒</span>'
+        : `<input type="checkbox" class="meta-raw-check" data-key="${_escapeHtml(f.key)}">`;
+      tr.innerHTML = `
+        <td style="text-align:center;">${cbHtml}</td>
+        <td class="raw-key">${_escapeHtml(f.key)}</td>
+        <td>${kindHtml}</td>
+        <td class="raw-preview">${_escapeHtml(f.preview || "")}</td>
+        <td class="raw-size">${(f.size || 0).toLocaleString()}</td>
+      `;
+      rawBody.appendChild(tr);
+    });
+    // Reset stato selezione
+    const master = $("#metaRawSelectAll");
+    if (master) { master.checked = false; master.indeterminate = false; }
+    _updateRawFramesSelection();
+  }
+
+  // AI badge
+  const aiBadge = $("#metaAiBadge");
+  if (aiBadge) {
+    if (d.ai_generated) {
+      aiBadge.hidden = false;
+      aiBadge.textContent = d.ai_source ? `AI · ${d.ai_source}` : "AI Generated";
+    } else {
+      aiBadge.hidden = true;
+      aiBadge.textContent = "";
+    }
+  }
 
   // WhereFroms (macOS only)
   if (d.is_macos) {
@@ -1204,6 +1249,51 @@ $("#metaPickBtn").addEventListener("click", async () => {
   if (path) await loadMetaFile(path);
 });
 
+function _updateRawFramesSelection() {
+  const boxes = $$("#metaRawFrames .meta-raw-check");
+  const checked = boxes.filter((b) => b.checked);
+  const cnt = $("#metaRawSelectedCount");
+  if (cnt) cnt.textContent = `${checked.length} selezionati`;
+  const btn = $("#metaRawRemoveBtn");
+  if (btn) btn.disabled = checked.length === 0;
+  const master = $("#metaRawSelectAll");
+  if (master) {
+    if (boxes.length === 0) { master.checked = false; master.indeterminate = false; }
+    else if (checked.length === 0) { master.checked = false; master.indeterminate = false; }
+    else if (checked.length === boxes.length) { master.checked = true; master.indeterminate = false; }
+    else { master.checked = false; master.indeterminate = true; }
+  }
+}
+
+document.addEventListener("change", (e) => {
+  const t = e.target;
+  if (t && t.classList && t.classList.contains("meta-raw-check")) {
+    _updateRawFramesSelection();
+  }
+});
+
+$("#metaRawSelectAll")?.addEventListener("change", (e) => {
+  $$("#metaRawFrames .meta-raw-check").forEach((b) => { b.checked = e.target.checked; });
+  _updateRawFramesSelection();
+});
+
+$("#metaRawRemoveBtn")?.addEventListener("click", async () => {
+  const keys = $$("#metaRawFrames .meta-raw-check")
+    .filter((b) => b.checked)
+    .map((b) => b.dataset.key);
+  if (keys.length === 0) return;
+  if (!window.confirm(`Rimuovere ${keys.length} frame dal file?\n\n${keys.join("\n")}\n\nOperazione permanente.`)) return;
+  const path = state.meta?.path;
+  if (!path) return;
+  const res = await window.pywebview.api.remove_metadata_frames(path, keys);
+  if (res && res.ok) {
+    toast(`Rimossi ${res.removed || 0} frame`, "ok");
+    await loadMetaFile(path);  // ricarica per aggiornare tabella
+  } else {
+    toast("Errore: " + (res?.error || "sconosciuto"), "error");
+  }
+});
+
 $("#metaCoverBtn").addEventListener("click", async () => {
   const path = await window.pywebview.api.pick_image_file();
   if (!path) return;
@@ -1254,6 +1344,8 @@ $("#metaSaveBtn").addEventListener("click", async () => {
       bpm: $("#metaBpm").value,
       key: $("#metaKey").value,
       comment: $("#metaComment").value,
+      source_url: $("#metaSourceUrl").value.trim(),
+      lyrics: $("#metaLyrics").value,
       where_from: $("#metaWhereFrom").value
         .split("\n")
         .map(s => s.trim())

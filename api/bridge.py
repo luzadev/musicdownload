@@ -446,6 +446,21 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def remove_metadata_frames(self, path: str, frame_keys: list) -> dict:
+        """Rimuove i frame ID3/atomi indicati dal file. Usato dal pannello
+        'Metadati avanzati' per pulire TXXX, GEOB (C2PA), USLT extra, ecc."""
+        if not path or not os.path.exists(path):
+            return {"ok": False, "error": "File non trovato"}
+        gate = self._gate("metadata")
+        if gate:
+            return gate
+        try:
+            from core.metadata import remove_frames
+            n = remove_frames(path, frame_keys or [])
+            return {"ok": True, "removed": n}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def save_metadata(self, payload: dict) -> dict:
         path = (payload.get("path") or "").strip()
         if not path:
